@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+//  Auth & Team
+// ─────────────────────────────────────────────
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("viewer") // admin | viewer | support
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+// ─────────────────────────────────────────────
+//  Products & Plans
+// ─────────────────────────────────────────────
+
+model Product {
+  id            Int              @id @default(autoincrement())
+  name          String
+  slug          String           @unique
+  description   String?
+  productType   String           @default("subscription") // subscription | one_time
+  isActive      Boolean          @default(true)
+  walletEnabled Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  plans         ProductPlan[]
+  subscriptions Subscription[]
+  settings      ProductSettings?
+  coupons       Coupon[]
+  webhooks      OutboundWebhook[]
+
+  @@index([isActive])
+}
+
+model ProductPlan {
+  id                       Int      @id @default(autoincrement())
+  productId                Int
+  product                  Product  @relation(fields: [productId], references: [id])
+  planType                 String
+  amountCents              Int
+  currency                 String   @default("EGP")
+  paymobSubscriptionPlanId Int?
+  label                    String
+  intervalLabel            String
+  badge                    String?
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([productId, planType])
+  @@index([productId])
+}
+
+// ─────────────────────────────────────────────
+//  Product Settings (per-product customization)
+// ─────────────────────────────────────────────
+
+model ProductSettings {
+  id             Int      @id @default(autoincrement())
+  productId      Int      @unique
+  product        Product  @relation(fields: [productId], references: [id])
+
+  // Redirect URLs
+  successUrl     String?  // custom URL after successful payment
+  failureUrl     String?  // custom URL after failed payment
+
+  // Head code (tracking pixels, FB pixel, GA, etc.)
+  headCode       String?  // raw HTML injected into <head>
+
+  // Checkout page customization
+  logoUrl        String?
+  primaryColor   String?  @default("#6366f1")
+  accentColor    String?  @default("#7c3aed")
+  ctaText        String?  // e.g. "Subscribe Now"
+  checkoutTitle  String?  // overrides product name in header
+
+  // Feature flags
+  couponsEnabled Boolean  @default(false)
+  embedEnabled   Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+//  Subscriptions & Payments
+// ─────────────────────────────────────────────
+
+model Subscription {
+  id                     Int       @id @default(autoincrement())
+  email                  String
+  firstName              String
+  lastName               String
+  phone                  String
+  plan                   String
+  status                 String    @default("pending")
+  amountCents            Int
+  currency               String    @default("EGP")
+  nextRenewalDate        DateTime
+  cancelledAt            DateTime?
+  lastPaymobOrder        String?
+  lastTransactionId      String?
+  paymobSubscriptionId   Int?
+  paymobPlanId           Int?
+  paymentMethod          String?
+  productId              Int?
+  couponCode             String?   // coupon used at subscription time
+  discountCents          Int?      // discount applied (in cents)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  product                Product?  @relation(fields: [productId], references: [id])
+  payments               Payment[]
+
+  @@index([status, nextRenewalDate])
+  @@index([email])
+  @@index([lastPaymobOrder])
+  @@index([paymobSubscriptionId])
+  @@index([productId])
+}
+
+model Payment {
+  id             Int          @id @default(autoincrement())
+  subscriptionId Int
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  paymobOrderId  String?
+  transactionId  String       @unique
+  amountCents    Int
+  status         String
+  type           String
+  failReason     String?
+  createdAt      DateTime     @default(now())
+}
+
+// ─────────────────────────────────────────────
+//  Coupons
+// ─────────────────────────────────────────────
+
+model Coupon {
+  id            Int       @id @default(autoincrement())
+  code          String    @unique
+  discountType  String    // percentage | fixed
+  discountValue Float     // percentage (0-100) or amount in cents
+  appliesTo     String    @default("first_payment") // first_payment | all_renewals
+  maxUses       Int?      // null = unlimited
+  usedCount     Int       @default(0)
+  expiresAt     DateTime?
+  isActive      Boolean   @default(true)
+  productId     Int?      // null = all products
+  product       Product?  @relation(fields: [productId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([code])
+  @@index([productId])
+}
+
+// ─────────────────────────────────────────────
+//  Outbound Webhooks (replaces hardcoded GHL URL)
+// ─────────────────────────────────────────────
+
+model OutboundWebhook {
+  id          Int      @id @default(autoincrement())
+  name        String
+  url         String
+  // comma-separated event names:
+  // payment_success | payment_failed | renewal_success | renewal_failed | cancelled | cancel_requested | expired
+  events      String   @default("payment_success,payment_failed,cancelled")
+  productId   Int?     // null = fires for all products
+  product     Product? @relation(fields: [productId], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+}

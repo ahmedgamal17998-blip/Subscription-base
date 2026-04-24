@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Successful</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem 1rem;
+      color: #1e293b;
+    }
+
+    .page-header {
+      width: 100%;
+      max-width: 460px;
+      background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
+      border-radius: 16px 16px 0 0;
+      padding: 2.25rem 2rem 2rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .page-header::before {
+      content: '';
+      position: absolute;
+      top: -40%;
+      right: -20%;
+      width: 260px;
+      height: 260px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 50%;
+    }
+
+    .page-header::after {
+      content: '';
+      position: absolute;
+      bottom: -30%;
+      left: -15%;
+      width: 200px;
+      height: 200px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 50%;
+    }
+
+    .icon-circle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 64px;
+      height: 64px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+      margin-bottom: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .icon-circle svg {
+      width: 32px;
+      height: 32px;
+      stroke: #fff;
+      stroke-width: 2.5;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .page-header h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 0.3rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .page-header p.subtitle {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.85);
+      font-weight: 400;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 0 0 16px 16px;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+      padding: 2rem;
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+    }
+
+    .info-block {
+      padding: 1rem 1.25rem;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      margin-bottom: 1.5rem;
+    }
+
+    .info-block p {
+      font-size: 0.9rem;
+      color: #15803d;
+      line-height: 1.6;
+    }
+
+    .info-block p + p {
+      margin-top: 0.5rem;
+    }
+
+    .info-block svg {
+      width: 16px;
+      height: 16px;
+      stroke: #16a34a;
+      fill: none;
+      stroke-width: 2;
+      vertical-align: -2px;
+      margin-right: 4px;
+    }
+
+    .details-text {
+      font-size: 0.85rem;
+      color: #64748b;
+      line-height: 1.6;
+    }
+
+    .trust-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #f1f5f9;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.72rem;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    .trust-item svg {
+      width: 14px;
+      height: 14px;
+      stroke: #94a3b8;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    /* Checkmark animation */
+    @keyframes checkDraw {
+      0% { stroke-dashoffset: 24; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    .icon-circle svg polyline {
+      stroke-dasharray: 24;
+      stroke-dashoffset: 24;
+      animation: checkDraw 0.5s ease-out 0.3s forwards;
+    }
+
+    @keyframes scaleIn {
+      0% { transform: scale(0.6); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .icon-circle {
+      animation: scaleIn 0.4s ease-out forwards;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <div class="icon-circle">
+      <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h1>Payment Successful!</h1>
+    <p class="subtitle">Your transaction has been completed</p>
+  </div>
+
+  <div class="card">
+    <div class="info-block">
+      <p>
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Your <span id="product-label"></span>subscription is now <strong>active</strong>.
+      </p>
+      <p>You will be automatically charged on your next renewal date.</p>
+    </div>
+
+    <div id="notoken-warning" style="display:none;padding:1rem 1.25rem;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;margin-bottom:1.5rem;">
+      <p style="font-size:0.9rem;color:#92400e;line-height:1.6;">
+        <strong>Auto-renewal not enabled:</strong> You did not save your card during checkout.
+        To enable automatic renewals, please <a href="/" style="color:#92400e;text-decoration:underline;">subscribe again</a> and check the <strong>"Save Card"</strong> checkbox on the payment page.
+      </p>
+    </div>
+
+    <p class="details-text">
+      A confirmation has been sent to your email address. You can manage your subscription at any time.
+    </p>
+
+    <div class="trust-bar">
+      <div class="trust-item">
+        <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        <span>SSL Encrypted</span>
+      </div>
+      <div class="trust-item">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Secure Payment</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('notoken')) {
+    document.getElementById('notoken-warning').style.display = 'block';
+  }
+  const productName = params.get('product');
+  if (productName) {
+    document.getElementById('product-label').textContent = productName + ' ';
+  }
+</script>
+</body>
+</html>

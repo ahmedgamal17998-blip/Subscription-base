@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subscribe — English Super Fast</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: var(--primary);
+      --accent: var(--accent);
+      --primary-rgb: 99,102,241;
+      --accent-rgb: 124,58,237;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f3ff;
+      background-image:
+        radial-gradient(ellipse at 20% 0%, rgba(var(--primary-rgb),0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 100%, rgba(var(--accent-rgb),0.06) 0%, transparent 60%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+      color: #1e293b;
+    }
+
+    /* ---- Container ---- */
+    .container {
+      width: 100%;
+      max-width: 680px;
+    }
+
+    /* ---- Header ---- */
+    .page-header {
+      width: 100%;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 50%, var(--primary) 100%);
+      border-radius: 20px 20px 0 0;
+      padding: 2.5rem 2.5rem 2.25rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .page-header::before {
+      content: '';
+      position: absolute;
+      top: -60%;
+      right: -15%;
+      width: 400px;
+      height: 400px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .page-header::after {
+      content: '';
+      position: absolute;
+      bottom: -40%;
+      left: -10%;
+      width: 300px;
+      height: 300px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .header-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(8px);
+      border-radius: 16px;
+      margin-bottom: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .header-icon svg {
+      width: 28px;
+      height: 28px;
+      fill: none;
+      stroke: #fff;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .page-header h1 {
+      font-size: 1.625rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 0.4rem;
+      position: relative;
+      z-index: 1;
+      letter-spacing: -0.01em;
+    }
+
+    .page-header p {
+      font-size: 0.925rem;
+      color: rgba(255,255,255,0.78);
+      font-weight: 400;
+      position: relative;
+      z-index: 1;
+    }
+
+    .page-header .lock-icon {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      stroke: rgba(255,255,255,0.78);
+      fill: none;
+      stroke-width: 2;
+      vertical-align: -1px;
+      margin-right: 2px;
+    }
+
+    /* ---- Card ---- */
+    .card {
+      background: #fff;
+      border-radius: 0 0 20px 20px;
+      box-shadow:
+        0 4px 6px -1px rgba(0,0,0,0.03),
+        0 10px 36px -4px rgba(79,70,229,0.08),
+        0 1px 2px rgba(0,0,0,0.02);
+      padding: 2.25rem 2.5rem 2rem;
+      width: 100%;
+    }
+
+    /* ---- Section Headings ---- */
+    .section-label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 0.85rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* ---- Form ---- */
+    .form-group {
+      margin-bottom: 1.15rem;
+      position: relative;
+    }
+
+    label.field-label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 0.4rem;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 0.9375rem;
+      font-family: inherit;
+      color: #1e293b;
+      background: #fafafa;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    input[type="tel"]:focus {
+      border-color: var(--primary);
+      background: #fff;
+      box-shadow: 0 0 0 3.5px rgba(99,102,241,0.1);
+    }
+
+    input::placeholder {
+      color: #9ca3af;
+    }
+
+    /* ---- Plans ---- */
+    .plans-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .plans {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .plans.has-three {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .plans.has-four {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .plan-card {
+      border: 2px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 1.35rem 1rem 1.15rem;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.25s ease;
+      background: #fafafa;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+    }
+
+    .plan-card:hover {
+      border-color: #c7d2fe;
+      background: #f5f3ff;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(99,102,241,0.08);
+    }
+
+    .plan-card input[type="radio"] {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .plan-card.selected {
+      border-color: var(--primary);
+      background: linear-gradient(145deg, #eef2ff 0%, #f5f3ff 100%);
+      box-shadow: 0 0 0 3.5px rgba(99,102,241,0.12), 0 4px 16px rgba(99,102,241,0.1);
+    }
+
+    .plan-card.selected .plan-check {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .plan-check {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transform: scale(0.4);
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .plan-check svg {
+      width: 12px;
+      height: 12px;
+      stroke: #fff;
+      stroke-width: 2.5;
+      fill: none;
+    }
+
+    .plan-badge {
+      position: absolute;
+      top: -1px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--accent), var(--primary));
+      color: #fff;
+      font-size: 0.625rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.65rem;
+      border-radius: 0 0 8px 8px;
+      white-space: nowrap;
+    }
+
+    .plan-name {
+      font-weight: 700;
+      font-size: 1rem;
+      color: #1e293b;
+      margin-bottom: 0.1rem;
+    }
+
+    .plan-price {
+      font-size: 1.15rem;
+      color: #4f46e5;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+
+    .plan-interval {
+      font-size: 0.78rem;
+      color: #6b7280;
+      font-weight: 500;
+    }
+
+    /* ---- Divider ---- */
+    .divider {
+      height: 1px;
+      background: #f1f5f9;
+      margin: 1.5rem 0;
+    }
+
+    /* ---- Consent ---- */
+    .consent-wrapper {
+      margin-bottom: 1.75rem;
+    }
+
+    .consent {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      cursor: pointer;
+      font-size: 0.84rem;
+      color: #4b5563;
+      line-height: 1.55;
+      padding: 1rem 1.15rem;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 12px;
+      background: #fafafa;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .consent:hover {
+      border-color: #c7d2fe;
+      background: #faf5ff;
+    }
+
+    .consent input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      margin-top: 1px;
+      border: 2px solid #d1d5db;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      background: #fff;
+    }
+
+    .consent input[type="checkbox"]:checked {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .consent input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 6px;
+      width: 5px;
+      height: 9px;
+      border: solid #fff;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .consent span {
+      flex: 1;
+    }
+
+    /* ---- Payment Buttons ---- */
+    .payment-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .payment-btn {
+      width: 100%;
+      padding: 0.9rem 1.25rem;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      letter-spacing: 0.01em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .payment-btn svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .payment-btn .btn-label {
+      flex: 1;
+      text-align: left;
+    }
+
+    .payment-btn .btn-tag {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* Card button (primary) */
+    .payment-btn.card-btn {
+      background: linear-gradient(135deg, #4f46e5 0%, var(--accent) 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(79,70,229,0.3);
+    }
+
+    .payment-btn.card-btn:hover:not(:disabled) {
+      box-shadow: 0 6px 20px rgba(79,70,229,0.4);
+      transform: translateY(-1px);
+    }
+
+    .payment-btn.card-btn .btn-tag {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+
+    .payment-btn.card-btn svg {
+      stroke: #fff;
+      fill: none;
+      stroke-width: 1.8;
+    }
+
+    /* Wallet button (secondary) */
+    .payment-btn.wallet-btn {
+      background: #fff;
+      color: #1e293b;
+      border: 2px solid #e5e7eb;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .payment-btn.wallet-btn:hover:not(:disabled) {
+      border-color: #10b981;
+      background: #f0fdf4;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(16,185,129,0.12);
+    }
+
+    .payment-btn.wallet-btn .btn-tag {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .payment-btn.wallet-btn svg {
+      stroke: #10b981;
+      fill: none;
+      stroke-width: 1.8;
+    }
+
+    .payment-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    .payment-or {
+      text-align: center;
+      font-size: 0.75rem;
+      color: #9ca3af;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      position: relative;
+    }
+
+    .payment-or::before,
+    .payment-or::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: calc(50% - 1.5rem);
+      height: 1px;
+      background: #e5e7eb;
+    }
+
+    .payment-or::before { left: 0; }
+    .payment-or::after { right: 0; }
+
+    /* ---- Trust Bar ---- */
+    .trust-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #f1f5f9;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.725rem;
+      color: #9ca3af;
+      font-weight: 500;
+    }
+
+    .trust-item svg {
+      width: 15px;
+      height: 15px;
+      stroke: #9ca3af;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* ---- Messages ---- */
+    .message {
+      margin-top: 1rem;
+      padding: 0.8rem 1rem;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      display: none;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+
+    .message.error {
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+
+    .message.error::before {
+      content: '';
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      margin-right: 6px;
+      vertical-align: -2px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23dc2626' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
+      background-size: contain;
+    }
+
+    .message.info {
+      background: #eef2ff;
+      color: #4338ca;
+      border: 1px solid #c7d2fe;
+    }
+
+    .message.info::before {
+      content: '';
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      margin-right: 6px;
+      vertical-align: -2px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234338ca' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
+      background-size: contain;
+    }
+
+    /* ---- Spinner ---- */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Loading skeleton for plans ---- */
+    .plans-loading {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+
+    .plan-skeleton {
+      border: 2px solid #f3f4f6;
+      border-radius: 14px;
+      padding: 1.35rem 1rem 1.15rem;
+      text-align: center;
+      background: #fafafa;
+    }
+
+    .skeleton-line {
+      height: 14px;
+      background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+      margin: 0 auto 0.5rem;
+    }
+
+    .skeleton-line:last-child { margin-bottom: 0; }
+    .skeleton-line.short { width: 50%; }
+    .skeleton-line.medium { width: 70%; }
+
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 680px) {
+      .page-header {
+        padding: 2rem 1.75rem 1.75rem;
+        border-radius: 16px 16px 0 0;
+      }
+      .card {
+        padding: 1.75rem 1.5rem 1.5rem;
+        border-radius: 0 0 16px 16px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      body { padding: 1rem 0.75rem; }
+
+      .page-header {
+        padding: 1.75rem 1.25rem 1.5rem;
+      }
+
+      .page-header h1 { font-size: 1.35rem; }
+
+      .card {
+        padding: 1.5rem 1.25rem 1.25rem;
+      }
+
+      .plans.has-three {
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+      }
+
+      .plans-loading {
+        grid-template-columns: 1fr;
+      }
+
+      .plan-card {
+        flex-direction: row;
+        text-align: left;
+        padding: 1rem 1.15rem;
+        gap: 0;
+      }
+
+      .plan-card .plan-info {
+        flex: 1;
+      }
+
+      .plan-card .plan-pricing {
+        text-align: right;
+      }
+
+      .plan-badge {
+        left: auto;
+        right: -1px;
+        top: -1px;
+        transform: none;
+        border-radius: 0 14px 0 8px;
+      }
+
+      .trust-bar {
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .trust-item { font-size: 0.675rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ---- Welcome Page (shown at root /) ---- -->
+  <div class="container" id="welcomePage" style="display:none;">
+    <div class="page-header">
+      <div class="header-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M21 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
+          <path d="M1 10h22"/>
+          <path d="M6 14h2"/>
+          <path d="M12 14h6"/>
+        </svg>
+      </div>
+      <h1>Subscription Portal</h1>
+      <p>Secure payments powered by Paymob</p>
+    </div>
+    <div class="card" style="text-align:center;padding:3rem 2rem;">
+      <svg style="width:64px;height:64px;stroke:var(--primary);fill:none;stroke-width:1.5;margin-bottom:1.25rem;" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <h2 style="font-size:1.35rem;font-weight:700;color:#1e293b;margin-bottom:0.5rem;">Welcome</h2>
+      <p style="color:#64748b;font-size:0.95rem;line-height:1.6;max-width:400px;margin:0 auto;">To subscribe, please use the link provided to you for the specific product you'd like to access.</p>
+      <div class="trust-bar" style="margin-top:2rem;">
+        <div class="trust-item">
+          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          <span>SSL Encrypted</span>
+        </div>
+        <div class="trust-item">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>Secure Payment</span>
+        </div>
+        <div class="trust-item">
+          <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+          <span>PCI Compliant</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Subscribe Page (shown at /subscribe/:slug) ---- -->
+  <div class="container" id="subscribePage" style="display:none;">
+    <!-- ---- Header ---- -->
+    <div class="page-header">
+      <div class="header-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M21 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
+          <path d="M1 10h22"/>
+          <path d="M6 14h2"/>
+          <path d="M12 14h6"/>
+        </svg>
+      </div>
+      <h1>Start Your Subscription</h1>
+      <p>
+        <svg class="lock-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        Secure payment powered by Paymob
+      </p>
+    </div>
+
+    <!-- ---- Card ---- -->
+    <div class="card">
+      <form id="subForm" autocomplete="on">
+
+        <!-- Plan Selection -->
+        <div class="plans-section">
+          <span class="section-label">Choose Your Plan</span>
+          <div class="plans" id="plansContainer">
+            <!-- Loading skeleton shown until plans load -->
+            <div class="plans-loading" id="plansLoading">
+              <div class="plan-skeleton">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line medium"></div>
+                <div class="skeleton-line short"></div>
+              </div>
+              <div class="plan-skeleton">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line medium"></div>
+                <div class="skeleton-line short"></div>
+              </div>
+              <div class="plan-skeleton">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line medium"></div>
+                <div class="skeleton-line short"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Personal Information -->
+        <span class="section-label">Your Information</span>
+
+        <div class="form-group">
+          <label class="field-label" for="name">Full Name</label>
+          <input type="text" id="name" name="name" placeholder="Mohamed Ahmed" autocomplete="name" required />
+        </div>
+
+        <div class="form-group">
+          <label class="field-label" for="email">Email Address</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="form-group">
+          <label class="field-label" for="phone">Phone Number</label>
+          <input type="tel" id="phone" name="phone" placeholder="01012345678" autocomplete="tel" required />
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Coupon Code (shown only when couponsEnabled) -->
+        <div class="divider" id="couponDivider" style="display:none;"></div>
+        <div id="couponSection" style="display:none;margin-bottom:1.25rem;">
+          <span class="section-label">Coupon Code</span>
+          <div style="display:flex;gap:0.5rem;align-items:flex-start;">
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <input type="text" id="couponInput" placeholder="Enter coupon code" autocomplete="off"
+                style="text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()" />
+            </div>
+            <button type="button" id="applyBtn" onclick="applyCoupon()"
+              style="padding:0.75rem 1rem;background:var(--primary);color:#fff;border:none;border-radius:10px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;font-size:0.875rem;">
+              Apply
+            </button>
+          </div>
+          <div id="couponMsg" style="margin-top:0.5rem;font-size:0.82rem;display:none;padding:0.5rem 0.75rem;border-radius:8px;"></div>
+        </div>
+
+        <!-- Payment Options -->
+        <span class="section-label">Payment Method</span>
+        <div class="payment-buttons" id="paymentButtons">
+          <button type="button" id="cardBtn" class="payment-btn card-btn" onclick="submitPayment('card')">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <span class="btn-label">Pay with Card</span>
+          </button>
+          <div class="payment-or" id="walletOr">or</div>
+          <button type="button" id="walletBtn" class="payment-btn wallet-btn" onclick="submitPayment('wallet')">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-3"/><path d="M16 7h5a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/></svg>
+            <span class="btn-label">Pay with Wallet</span>
+          </button>
+        </div>
+
+        <!-- Messages -->
+        <div class="message" id="msg"></div>
+
+        <!-- Trust Bar -->
+        <div class="trust-bar">
+          <div class="trust-item">
+            <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span>SSL Encrypted</span>
+          </div>
+          <div class="trust-item">
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Secure Payment</span>
+          </div>
+          <div class="trust-item">
+            <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+            <span>PCI Compliant</span>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('subForm');
+    const msg = document.getElementById('msg');
+    const submitBtn = document.getElementById('submitBtn');
+    const plansContainer = document.getElementById('plansContainer');
+
+    // Detect product slug from URL: /subscribe/:slug
+    const pathMatch = window.location.pathname.match(/^\/subscribe\/([^/]+)/);
+    const productSlug = pathMatch ? pathMatch[1] : null;
+
+    // Show welcome or subscribe page
+    if (!productSlug) {
+      document.getElementById('welcomePage').style.display = '';
+      document.title = 'Subscription Portal';
+    } else {
+      document.getElementById('subscribePage').style.display = '';
+    }
+
+    var appliedCouponCode = null;
+    var appliedDiscountCents = 0;
+    var currentAmountCents = 0;
+    var currentProductId = null;
+
+    function formatAmount(cents, currency) {
+      const amount = cents / 100;
+      return amount.toLocaleString() + ' ' + currency;
+    }
+
+    // Apply product settings (colors, logo, head code, etc.)
+    function applySettings(settings) {
+      if (!settings) return;
+      if (settings.primaryColor) {
+        document.documentElement.style.setProperty('--primary', settings.primaryColor);
+        // Extract RGB for radial gradients
+        const hex = settings.primaryColor.replace('#','');
+        const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+        document.documentElement.style.setProperty('--primary-rgb', `${r},${g},${b}`);
+      }
+      if (settings.accentColor) {
+        document.documentElement.style.setProperty('--accent', settings.accentColor);
+        const hex = settings.accentColor.replace('#','');
+        const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+        document.documentElement.style.setProperty('--accent-rgb', `${r},${g},${b}`);
+      }
+      if (settings.logoUrl) {
+        const icon = document.querySelector('.header-icon');
+        if (icon) {
+          icon.innerHTML = `<img src="${settings.logoUrl}" alt="logo" style="width:36px;height:36px;object-fit:contain;border-radius:8px;">`;
+        }
+      }
+      if (settings.ctaText) {
+        const cardBtn = document.getElementById('cardBtn');
+        if (cardBtn) cardBtn.querySelector('.btn-label').textContent = settings.ctaText;
+      }
+      if (settings.couponsEnabled) {
+        document.getElementById('couponSection').style.display = '';
+        document.getElementById('couponDivider').style.display = '';
+      }
+      // Inject head code (tracking pixels, etc.)
+      if (settings.headCode) {
+        const container = document.createElement('div');
+        container.innerHTML = settings.headCode;
+        // Inject scripts properly
+        Array.from(container.children).forEach(node => {
+          if (node.tagName === 'SCRIPT') {
+            const s = document.createElement('script');
+            if (node.src) s.src = node.src;
+            else s.textContent = node.textContent;
+            document.head.appendChild(s);
+          } else {
+            document.head.appendChild(node.cloneNode(true));
+          }
+        });
+      }
+    }
+
+    // Coupon validation
+    async function applyCoupon() {
+      const code = document.getElementById('couponInput').value.trim().toUpperCase();
+      const couponMsg = document.getElementById('couponMsg');
+      if (!code) return;
+
+      const planRadio = document.querySelector('input[name="plan"]:checked');
+      if (!planRadio) { showCouponMsg('Please select a plan first.', 'error'); return; }
+
+      try {
+        const res = await fetch('/api/coupons/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, productId: currentProductId, amountCents: currentAmountCents }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showCouponMsg(data.error || 'Invalid coupon.', 'error');
+          appliedCouponCode = null;
+          appliedDiscountCents = 0;
+          return;
+        }
+        appliedCouponCode = data.code;
+        appliedDiscountCents = data.discountCents;
+        const discStr = data.discountType === 'percentage' ? `${data.discountValue}%` : formatAmount(data.discountCents, 'EGP');
+        showCouponMsg(`✓ Coupon applied! ${discStr} off → ${formatAmount(data.finalAmount, 'EGP')}`, 'success');
+      } catch {
+        showCouponMsg('Failed to validate coupon.', 'error');
+      }
+    }
+
+    function showCouponMsg(text, type) {
+      const el = document.getElementById('couponMsg');
+      el.textContent = text;
+      el.style.display = '';
+      el.style.background = type === 'success' ? '#f0fdf4' : '#fef2f2';
+      el.style.color = type === 'success' ? '#15803d' : '#dc2626';
+      el.style.border = type === 'success' ? '1px solid #bbf7d0' : '1px solid #fecaca';
+    }
+
+    // Load plans from server
+    async function loadPlans() {
+      try {
+        const url = productSlug
+          ? `/api/products/slug/${productSlug}/config`
+          : '/api/config/public';
+        const res = await fetch(url);
+
+        if (res.status === 404 && productSlug) {
+          plansContainer.innerHTML = '<p style="color:#dc2626;text-align:center;padding:2rem;">Product not found.</p>';
+          setButtonsDisabled(true);
+          return;
+        }
+
+        const data = await res.json();
+
+        // Store product ID for coupon validation
+        if (data.product) {
+          currentProductId = data.product.id;
+        }
+
+        // Apply product settings (colors, logo, head code, coupons)
+        if (data.settings) {
+          applySettings(data.settings);
+        }
+
+        // Update page title and header
+        if (data.product) {
+          const displayTitle = data.settings?.checkoutTitle || data.product.name;
+          document.title = `Subscribe — ${displayTitle}`;
+          const h1 = document.querySelector('#subscribePage .page-header h1');
+          if (h1) h1.textContent = displayTitle;
+        }
+
+        // Show/hide wallet button
+        if (data.walletEnabled) {
+          hasWallet = true;
+        } else {
+          var wb = document.getElementById('walletBtn');
+          var wo = document.getElementById('walletOr');
+          if (wb) wb.style.display = 'none';
+          if (wo) wo.style.display = 'none';
+        }
+
+        renderPlans(data.plans);
+      } catch {
+        if (productSlug) {
+          plansContainer.innerHTML = '<p style="color:#dc2626;text-align:center;padding:2rem;">Failed to load product.</p>';
+          setButtonsDisabled(true);
+        } else {
+          renderPlans({
+            monthly: { amountCents: 10000, currency: 'EGP', label: 'Monthly', interval: '/ month' },
+            yearly: { amountCents: 100000, currency: 'EGP', label: 'Yearly', interval: '/ year' },
+          });
+        }
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function renderPlans(plans) {
+      const keys = Object.keys(plans);
+      if (keys.length === 3) plansContainer.classList.add('has-three');
+      if (keys.length >= 4) plansContainer.classList.add('has-four');
+
+      // Default to index 1 (monthly) if it exists, otherwise index 0
+      const defaultIndex = keys.length > 1 ? 1 : 0;
+
+      plansContainer.innerHTML = keys.map((key, i) => {
+        const p = plans[key];
+        const isSelected = i === defaultIndex;
+        const safeKey = escapeHtml(key);
+        const badgeHtml = p.badge ? `<div class="plan-badge">${escapeHtml(p.badge)}</div>` : '';
+        return `
+          <label class="plan-card${isSelected ? ' selected' : ''}" id="card-${safeKey}">
+            <input type="radio" name="plan" value="${safeKey}" ${isSelected ? 'checked' : ''} />
+            <div class="plan-check"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+            ${badgeHtml}
+            <div class="plan-info">
+              <div class="plan-name">${escapeHtml(p.label)}</div>
+            </div>
+            <div class="plan-pricing">
+              <div class="plan-price">${formatAmount(p.amountCents, p.currency)}</div>
+              <div class="plan-interval">${escapeHtml(p.interval)}</div>
+            </div>
+          </label>
+        `;
+      }).join('');
+
+      // Store first selected plan amount for coupon validation
+      const firstSelected = document.querySelector('input[name="plan"]:checked');
+      if (firstSelected) {
+        const key = firstSelected.value;
+        currentAmountCents = plans[key]?.amountCents || 0;
+      }
+
+      // Re-bind plan selection
+      document.querySelectorAll('input[name="plan"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+          document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+          radio.parentElement.classList.add('selected');
+          // Reset coupon when plan changes
+          appliedCouponCode = null;
+          appliedDiscountCents = 0;
+          document.getElementById('couponInput').value = '';
+          document.getElementById('couponMsg').style.display = 'none';
+          currentAmountCents = plans[radio.value]?.amountCents || 0;
+        });
+      });
+    }
+
+    function showMsg(text, type) {
+      msg.textContent = text;
+      msg.className = `message ${type}`;
+      msg.style.display = 'block';
+    }
+
+    // Prevent form submit (buttons handle it)
+    form.addEventListener('submit', (e) => e.preventDefault());
+
+    var hasWallet = false; // will be set after config loads
+
+    function setButtonsDisabled(disabled) {
+      document.getElementById('cardBtn').disabled = disabled;
+      var wb = document.getElementById('walletBtn');
+      if (wb) wb.disabled = disabled;
+    }
+
+    function resetButtons() {
+      var cb = document.getElementById('cardBtn');
+      cb.disabled = false;
+      cb.innerHTML = '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;stroke:#fff;fill:none;stroke-width:1.8;"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg><span class="btn-label">Pay with Card</span>';
+      var wb = document.getElementById('walletBtn');
+      if (wb) {
+        wb.disabled = false;
+        wb.innerHTML = '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;stroke:#10b981;fill:none;stroke-width:1.8;"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-3"/><path d="M16 7h5a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/></svg><span class="btn-label">Pay with Wallet</span>';
+      }
+    }
+
+    async function submitPayment(paymentMethod) {
+      msg.style.display = 'none';
+
+      var name = document.getElementById('name').value.trim();
+      var email = document.getElementById('email').value.trim();
+      var phone = document.getElementById('phone').value.trim();
+      var planRadio = document.querySelector('input[name="plan"]:checked');
+      if (!planRadio) return showMsg('Please select a plan.', 'error');
+      var plan = planRadio.value;
+
+      if (name.length < 2) return showMsg('Please enter your full name.', 'error');
+      if (!/.+@.+\..+/.test(email)) return showMsg('Please enter a valid email.', 'error');
+      if (phone.length < 8) return showMsg('Please enter a valid phone number.', 'error');
+
+      setButtonsDisabled(true);
+      var clickedBtn = paymentMethod === 'wallet' ? document.getElementById('walletBtn') : document.getElementById('cardBtn');
+      clickedBtn.innerHTML = '<span class="spinner"></span><span class="btn-label">Processing...</span>';
+
+      try {
+        var res = await fetch('/api/payment/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name, email: email, phone: phone, plan: plan, paymentMethod: paymentMethod,
+            ...(productSlug ? { productSlug: productSlug } : {}),
+            ...(appliedCouponCode ? { couponCode: appliedCouponCode } : {}),
+          }),
+        });
+        var data = await res.json();
+
+        if (res.ok) {
+          window.location.href = data.checkoutUrl;
+          return;
+        }
+        if (res.status === 409) {
+          showMsg('You already have an active ' + data.plan + ' subscription.', 'info');
+        } else if (res.status === 429) {
+          showMsg('Too many attempts. Please wait a minute and try again.', 'error');
+        } else {
+          showMsg(data.error || 'Something went wrong. Please try again.', 'error');
+        }
+      } catch (err) {
+        showMsg('Something went wrong. Please try again.', 'error');
+      }
+
+      resetButtons();
+    }
+
+    if (productSlug) loadPlans();
+  </script>
+</body>
+</html>
