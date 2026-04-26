@@ -412,6 +412,29 @@ tr:hover td{background:#fafbfc}
                 <div class="loading-state"><div class="spinner spinner-dark"></div></div>
               </div>
             </div>
+            <div class="table-card" style="margin-bottom:20px">
+              <div class="table-header"><h3>Paymob Webhook URLs</h3></div>
+              <div style="padding:20px">
+                <p style="font-size:13px;color:#64748b;margin-bottom:16px">Copy these URLs and paste them in your <strong>Paymob Dashboard → Developers → Webhooks</strong> section so Paymob can notify this system about payment events.</p>
+                <div class="form-group">
+                  <label style="font-size:12px;font-weight:600;color:#374151">Transaction Webhook (payment success / failure)</label>
+                  <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                    <input type="text" id="paymob-txn-url" readonly value="https://pay.srv1575253.hstgr.cloud/api/webhook/paymob" style="font-family:monospace;font-size:12px;background:#f8fafc;flex:1">
+                    <button class="btn btn-secondary btn-sm" onclick="copyField('paymob-txn-url')">Copy</button>
+                  </div>
+                </div>
+                <div class="form-group" style="margin-top:12px">
+                  <label style="font-size:12px;font-weight:600;color:#374151">Subscription Webhook (renewal / cancellation events)</label>
+                  <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                    <input type="text" id="paymob-sub-url" readonly value="https://pay.srv1575253.hstgr.cloud/api/webhook/paymob-subscription" style="font-family:monospace;font-size:12px;background:#f8fafc;flex:1">
+                    <button class="btn btn-secondary btn-sm" onclick="copyField('paymob-sub-url')">Copy</button>
+                  </div>
+                </div>
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-top:12px">
+                  <p style="font-size:12px;color:#1d4ed8;margin:0"><strong>💡 Tip:</strong> In Paymob, set the HMAC secret to match the <code>PAYMOB_HMAC_SECRET</code> value in your server <code>.env</code> file. This ensures all incoming webhooks are verified and secure.</p>
+                </div>
+              </div>
+            </div>
             <div class="table-card">
               <div class="table-header"><h3>Change Password</h3></div>
               <div style="padding:20px">
@@ -569,7 +592,8 @@ tr:hover td{background:#fafbfc}
           <div class="form-group"><label>Interval</label>
             <select id="plf-interval">
               <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
+              <option value="3-months">3 Months</option>
+              <option value="6-months">6 Months</option>
               <option value="yearly">Yearly</option>
               <option value="weekly">Weekly</option>
             </select>
@@ -595,7 +619,10 @@ tr:hover td{background:#fafbfc}
     <div class="modal-body">
       <form onsubmit="return false">
         <div class="form-group"><label>Name *</label><input type="text" id="wf-name" required></div>
-        <div class="form-group"><label>URL *</label><input type="url" id="wf-url" required placeholder="https://"></div>
+        <div class="form-group">
+          <label>URL * <span style="font-size:11px;color:#6366f1;font-weight:400">(must start with https://)</span></label>
+          <input type="url" id="wf-url" required placeholder="https://your-server.com/webhook">
+        </div>
         <div class="form-group">
           <label style="margin-bottom:10px">Events</label>
           <div class="events-grid">
@@ -1102,7 +1129,7 @@ function addPlanRow(plan) {
         <select name="plan-type"><option value="recurring" ${plan?.type==='recurring'?'selected':''}>Recurring</option><option value="one_time" ${plan?.type==='one_time'?'selected':''}>One-Time</option></select>
       </div>
       <div class="form-group" style="margin:0"><label style="font-size:12px">Interval</label>
-        <select name="plan-interval"><option value="monthly" ${plan?.interval==='monthly'?'selected':''}>Monthly</option><option value="quarterly" ${plan?.interval==='quarterly'?'selected':''}>Quarterly</option><option value="yearly" ${plan?.interval==='yearly'?'selected':''}>Yearly</option><option value="weekly" ${plan?.interval==='weekly'?'selected':''}>Weekly</option></select>
+        <select name="plan-interval"><option value="monthly" ${plan?.planType==='monthly'?'selected':''}>Monthly</option><option value="3-months" ${plan?.planType==='3-months'?'selected':''}>3 Months</option><option value="6-months" ${plan?.planType==='6-months'?'selected':''}>6 Months</option><option value="yearly" ${plan?.planType==='yearly'?'selected':''}>Yearly</option><option value="weekly" ${plan?.planType==='weekly'?'selected':''}>Weekly</option></select>
       </div>
       <div class="form-group" style="margin:0;grid-column:1/-1"><label style="font-size:12px">Badge (optional)</label><input type="text" name="plan-badge" value="${escAttr(plan?.badge||'')}" placeholder="Popular"></div>
     </div>
@@ -1119,7 +1146,9 @@ async function saveProduct() {
     const label = row.querySelector('[name="plan-label"]').value.trim();
     const amountRaw = parseFloat(row.querySelector('[name="plan-amount"]').value);
     if (label && !isNaN(amountRaw)) {
-      plans.push({ label, amount: Math.round(amountRaw * 100), type: row.querySelector('[name="plan-type"]').value, interval: row.querySelector('[name="plan-interval"]').value, badge: row.querySelector('[name="plan-badge"]').value.trim() || undefined });
+      const planTypeVal = row.querySelector('[name="plan-interval"]').value;
+      const intervalLabelMap = { 'weekly': 'Weekly', 'monthly': 'Monthly', '3-months': '3 Months', '6-months': '6 Months', 'yearly': 'Yearly' };
+      plans.push({ label, amountCents: Math.round(amountRaw * 100), planType: planTypeVal, intervalLabel: intervalLabelMap[planTypeVal] || planTypeVal, badge: row.querySelector('[name="plan-badge"]').value.trim() || undefined });
     }
   });
   const typeEl = document.querySelector('input[name="pf-type"]:checked');
@@ -1205,7 +1234,9 @@ async function savePlan() {
   const amount = parseFloat(document.getElementById('plf-amount').value);
   if (!label || isNaN(amount)) { toast('Label and amount are required', 'error'); return; }
   try {
-    await api('POST', '/products/' + currentProductId + '/plans', { label, amount: Math.round(amount * 100), type: document.getElementById('plf-type').value, interval: document.getElementById('plf-interval').value, badge: document.getElementById('plf-badge').value.trim() || undefined });
+    const planTypeVal = document.getElementById('plf-interval').value;
+    const intervalLabelMap = { 'weekly': 'Weekly', 'monthly': 'Monthly', '3-months': '3 Months', '6-months': '6 Months', 'yearly': 'Yearly' };
+    await api('POST', '/products/' + currentProductId + '/plans', { label, amountCents: Math.round(amount * 100), planType: planTypeVal, intervalLabel: intervalLabelMap[planTypeVal] || planTypeVal, badge: document.getElementById('plf-badge').value.trim() || undefined });
     toast('Plan added', 'success');
     closeModal('plan-modal');
     loadPanelPlans();
@@ -1236,7 +1267,11 @@ async function saveProductSettings() {
       successUrl: document.getElementById('ps-success-url').value,
       failureUrl: document.getElementById('ps-failure-url').value,
       headCode: document.getElementById('ps-head-code').value,
-      checkout: { logoUrl: document.getElementById('ps-logo-url').value, title: document.getElementById('ps-checkout-title').value, primaryColor: document.getElementById('ps-primary-color').value, accentColor: document.getElementById('ps-accent-color').value, ctaText: document.getElementById('ps-cta-text').value },
+      logoUrl: document.getElementById('ps-logo-url').value,
+      checkoutTitle: document.getElementById('ps-checkout-title').value,
+      primaryColor: document.getElementById('ps-primary-color').value,
+      accentColor: document.getElementById('ps-accent-color').value,
+      ctaText: document.getElementById('ps-cta-text').value,
       couponsEnabled: document.getElementById('ps-coupons-enabled').checked,
       embedEnabled: document.getElementById('ps-embed-enabled').checked
     });
@@ -1251,8 +1286,8 @@ async function loadEmbedCode() {
   try {
     const data = await api('GET', '/products/' + currentProductId + '/settings/embed');
     const em = data.embed || data;
-    if (em.iframe) iframeCode = em.iframe;
-    if (em.js) jsCode = em.js;
+    if (em.iframeSnippet) iframeCode = em.iframeSnippet;
+    if (em.jsSnippet) jsCode = em.jsSnippet;
   } catch { /* use defaults */ }
   document.getElementById('embed-iframe-pre').textContent = iframeCode;
   document.getElementById('embed-js-pre').textContent = jsCode;
@@ -1261,6 +1296,11 @@ async function loadEmbedCode() {
 function copyCode(preId) {
   const text = document.getElementById(preId).textContent;
   navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard!', 'success')).catch(() => toast('Copy failed', 'error'));
+}
+
+function copyField(inputId) {
+  const text = document.getElementById(inputId).value;
+  navigator.clipboard.writeText(text).then(() => toast('Copied!', 'success')).catch(() => toast('Copy failed', 'error'));
 }
 
 // ============================================================
@@ -1432,7 +1472,7 @@ async function saveCoupon() {
   const value = parseFloat(document.getElementById('cf-value').value);
   if (!code || isNaN(value)) { toast('Code and value are required', 'error'); return; }
   const type = document.getElementById('cf-type').value;
-  const payload = { code, type, discountType: type, value, appliesTo: document.getElementById('cf-applies').value, maxUses: document.getElementById('cf-max-uses').value ? parseInt(document.getElementById('cf-max-uses').value) : null, expiryDate: document.getElementById('cf-expiry').value || null, productId: document.getElementById('cf-product').value || null, active: document.getElementById('cf-active').checked };
+  const payload = { code, discountType: type, discountValue: value, appliesTo: document.getElementById('cf-applies').value, maxUses: document.getElementById('cf-max-uses').value ? parseInt(document.getElementById('cf-max-uses').value) : null, expiresAt: document.getElementById('cf-expiry').value || null, productId: document.getElementById('cf-product').value || null, isActive: document.getElementById('cf-active').checked };
   const btn = document.getElementById('coupon-save-btn');
   btn.disabled = true;
   try {
