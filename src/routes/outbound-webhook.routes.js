@@ -18,6 +18,7 @@ const VALID_EVENTS = [
 ];
 
 function parseEvents(eventsStr) {
+  if (Array.isArray(eventsStr)) return eventsStr.map(e => String(e).trim()).filter(Boolean);
   return (eventsStr || '').split(',').map(e => e.trim()).filter(Boolean);
 }
 
