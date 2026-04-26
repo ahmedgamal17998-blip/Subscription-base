@@ -1442,10 +1442,13 @@ async function loadCoupons() {
     wrap.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Code</th><th>Type</th><th>Value</th><th>Applies To</th><th>Uses</th><th>Expires</th><th>Product</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
       list.map(c => {
         const id = c._id || c.id;
-        const type = c.type || c.discountType || 'percentage';
-        const val = type === 'percentage' ? c.value + '%' : fmt(c.value || 0);
+        const type = c.discountType || c.type || 'percentage';
+        const discVal = c.discountValue ?? c.value;
+        const val = type === 'percentage' ? discVal + '%' : fmt(discVal || 0);
+        const expiresAt = c.expiresAt || c.expiryDate;
+        const isActive = c.isActive !== undefined ? c.isActive : c.active !== false;
         const cJson = escAttr(JSON.stringify(c));
-        return '<tr><td><strong>' + escAttr(c.code) + '</strong></td><td><span class="badge badge-blue">' + type + '</span></td><td>' + val + '</td><td><span class="badge badge-gray">' + escAttr(c.appliesTo || 'first_payment') + '</span></td><td>' + (c.usedCount || 0) + (c.maxUses ? '/' + c.maxUses : '') + '</td><td>' + (c.expiryDate ? fmtDate(c.expiryDate) : 'Never') + '</td><td>' + escAttr(c.productName || 'All') + '</td><td>' + statusBadge(c.active !== false ? 'active' : 'expired') + '</td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick=\'editCouponById(' + cJson + ')\'>Edit</button><button class="btn btn-danger btn-sm" onclick="deleteCoupon(\'' + id + '\')">Delete</button></div></td></tr>';
+        return '<tr><td><strong>' + escAttr(c.code) + '</strong></td><td><span class="badge badge-blue">' + type + '</span></td><td>' + val + '</td><td><span class="badge badge-gray">' + escAttr(c.appliesTo || 'first_payment') + '</span></td><td>' + (c.usedCount || 0) + (c.maxUses ? '/' + c.maxUses : '') + '</td><td>' + (expiresAt ? fmtDate(expiresAt) : 'Never') + '</td><td>' + escAttr(c.productName || 'All') + '</td><td>' + statusBadge(isActive ? 'active' : 'expired') + '</td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick=\'editCouponById(' + cJson + ')\'>Edit</button><button class="btn btn-danger btn-sm" onclick="deleteCoupon(\'' + id + '\')">Delete</button></div></td></tr>';
       }).join('') + '</tbody></table></div>';
   } catch (e) { wrap.innerHTML = '<div class="loading-state" style="color:#ef4444">Error: ' + e.message + '</div>'; }
 }
@@ -1456,12 +1459,13 @@ function openCouponModal(c) {
   document.getElementById('coupon-save-btn').textContent = c ? 'Save Changes' : 'Save Coupon';
   document.getElementById('cf-code').value = c?.code || '';
   document.getElementById('cf-type').value = c?.type || c?.discountType || 'percentage';
-  document.getElementById('cf-value').value = c?.value || '';
+  document.getElementById('cf-value').value = c?.discountValue ?? c?.value ?? '';
   document.getElementById('cf-applies').value = c?.appliesTo || 'first_payment';
   document.getElementById('cf-max-uses').value = c?.maxUses || '';
-  document.getElementById('cf-expiry').value = c?.expiryDate ? c.expiryDate.substring(0, 10) : '';
+  const expiresAt = c?.expiresAt || c?.expiryDate;
+  document.getElementById('cf-expiry').value = expiresAt ? expiresAt.substring(0, 10) : '';
   document.getElementById('cf-product').value = c?.productId || '';
-  document.getElementById('cf-active').checked = c ? c.active !== false : true;
+  document.getElementById('cf-active').checked = c ? (c.isActive !== undefined ? c.isActive : c.active !== false) : true;
   openModal('coupon-modal');
 }
 
