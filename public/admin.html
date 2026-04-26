@@ -1382,7 +1382,9 @@ async function loadWebhooks() {
       list.map(w => {
         const id = w._id || w.id;
         const wJson = escAttr(JSON.stringify(w));
-        return '<tr><td><strong>' + escAttr(w.name) + '</strong></td><td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escAttr(w.url) + '">' + escAttr(w.url) + '</td><td>' + (w.events || []).map(e => '<span class="badge badge-blue" style="margin:1px;font-size:11px">' + escAttr(e) + '</span>').join('') + '</td><td>' + escAttr(w.productName || w.productId || 'All') + '</td><td><label class="toggle"><input type="checkbox" ' + (w.active !== false ? 'checked' : '') + ' onchange="toggleWebhook(\'' + id + '\',this.checked)"><span class="toggle-slider"></span></label></td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick=\'editWebhookById(' + wJson + ')\'>Edit</button><button class="btn btn-danger btn-sm" onclick="deleteWebhook(\'' + id + '\')">Delete</button></div></td></tr>';
+        const evArr = Array.isArray(w.events) ? w.events : (w.events || '').split(',').filter(Boolean);
+        const isActive = w.isActive !== undefined ? w.isActive : w.active !== false;
+        return '<tr><td><strong>' + escAttr(w.name) + '</strong></td><td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escAttr(w.url) + '">' + escAttr(w.url) + '</td><td>' + evArr.map(e => '<span class="badge badge-blue" style="margin:1px;font-size:11px">' + escAttr(e) + '</span>').join('') + '</td><td>' + escAttr(w.productName || w.productId || 'All') + '</td><td><label class="toggle"><input type="checkbox" ' + (isActive ? 'checked' : '') + ' onchange="toggleWebhook(\'' + id + '\',this.checked)"><span class="toggle-slider"></span></label></td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick=\'editWebhookById(' + wJson + ')\'>Edit</button><button class="btn btn-danger btn-sm" onclick="deleteWebhook(\'' + id + '\')">Delete</button></div></td></tr>';
       }).join('') + '</tbody></table></div>';
   } catch (e) { wrap.innerHTML = '<div class="loading-state" style="color:#ef4444">Error: ' + e.message + '</div>'; }
 }
@@ -1393,7 +1395,8 @@ function openWebhookModal(wh) {
   document.getElementById('webhook-save-btn').textContent = wh ? 'Save Changes' : 'Save Webhook';
   document.getElementById('wf-name').value = wh?.name || '';
   document.getElementById('wf-url').value = wh?.url || '';
-  document.querySelectorAll('#webhook-modal .checkbox-item input').forEach(cb => { cb.checked = wh ? (wh.events || []).includes(cb.value) : false; });
+  const whEvArr = wh ? (Array.isArray(wh.events) ? wh.events : (wh.events || '').split(',').filter(Boolean)) : [];
+  document.querySelectorAll('#webhook-modal .checkbox-item input').forEach(cb => { cb.checked = whEvArr.includes(cb.value); });
   document.getElementById('wf-product').value = wh?.productId || '';
   openModal('webhook-modal');
 }
