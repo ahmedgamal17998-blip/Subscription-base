@@ -134,10 +134,19 @@ async function findByPaymobSubscriptionId(paymobSubId) {
 
 // ── Admin / List functions ───────────────────────────────────────────────────
 
-async function listSubscriptions({ status, page = 1, limit = 20, productId }) {
+async function listSubscriptions({ status, page = 1, limit = 20, productId, search }) {
   const where = {};
   if (status) where.status = status;
   if (productId) where.productId = productId;
+  if (search) {
+    const s = search.trim();
+    where.OR = [
+      { email: { contains: s, mode: 'insensitive' } },
+      { firstName: { contains: s, mode: 'insensitive' } },
+      { lastName: { contains: s, mode: 'insensitive' } },
+      { phone: { contains: s } },
+    ];
+  }
   const [subscriptions, total] = await prisma.$transaction([
     prisma.subscription.findMany({
       where,

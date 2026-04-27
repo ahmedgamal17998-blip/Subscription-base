@@ -311,6 +311,7 @@ tr:hover td{background:#fafbfc}
         <!-- SUBSCRIPTIONS -->
         <div class="page" id="page-subscriptions">
           <div class="filters">
+            <input type="text" id="sub-search" class="filter-select" placeholder="🔍 Search email, name, phone…" style="min-width:220px" oninput="clearTimeout(window._subSearchTimer);window._subSearchTimer=setTimeout(()=>loadSubscriptions(1),350)">
             <select class="filter-select" id="sub-status-filter" onchange="loadSubscriptions(1)">
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -987,10 +988,12 @@ async function loadSubscriptions(page) {
   const wrap = document.getElementById('subscriptions-wrap');
   const status = document.getElementById('sub-status-filter').value;
   const productId = document.getElementById('sub-product-filter').value;
+  const search = (document.getElementById('sub-search')?.value || '').trim();
   wrap.innerHTML = '<div class="loading-state"><div class="spinner spinner-dark"></div> Loading…</div>';
   let url = '/subscriptions?page=' + subPage + '&limit=' + PAGE_SIZE;
   if (status) url += '&status=' + encodeURIComponent(status);
   if (productId) url += '&productId=' + encodeURIComponent(productId);
+  if (search) url += '&search=' + encodeURIComponent(search);
   try {
     const data = await api('GET', url);
     const list = Array.isArray(data) ? data : (data.subscriptions || data.data || []);
@@ -999,12 +1002,24 @@ async function loadSubscriptions(page) {
     if (!list.length) {
       wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💳</div><p>No subscriptions found</p></div>';
     } else {
-      wrap.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Plan</th><th>Product</th><th>Status</th><th>Amount</th><th>Next Renewal</th><th>Actions</th></tr></thead><tbody>' +
+      wrap.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Phone</th><th>Plan</th><th>Product</th><th>Status</th><th>Amount</th><th>Next Renewal</th><th>Actions</th></tr></thead><tbody>' +
         list.map(s => {
           const id = s._id || s.id;
-          return '<tr><td>' + escAttr(s.email || s.customerEmail || '—') + '</td><td>' + escAttr(s.name || s.customerName || '—') + '</td><td>' + escAttr(s.planLabel || s.plan || '—') + '</td><td>' + escAttr(s.productName || '—') + '</td><td>' + statusBadge(s.status) + '</td><td>' + fmt(s.amount) + '</td><td>' + fmtDate(s.nextRenewalDate || s.renewsAt) + '</td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="viewSubscription(\'' + id + '\')">View</button>' +
-            (s.status === 'active' ? '<button class="btn btn-danger btn-sm" onclick="cancelSub(\'' + id + '\')">Cancel</button>' : '') +
-            (s.status === 'cancelled' || s.status === 'expired' ? '<button class="btn btn-success btn-sm" onclick="reactivateSub(\'' + id + '\')">Reactivate</button>' : '') +
+          const fullName = s.firstName ? (s.firstName + ' ' + (s.lastName || '')).trim() : (s.name || s.customerName || '—');
+          const amountDisplay = s.amountCents ? fmt(s.amountCents / 100) : (s.amount ? fmt(s.amount) : '—');
+          return '<tr>' +
+            '<td style="font-size:13px">' + escAttr(s.email || s.customerEmail || '—') + '</td>' +
+            '<td>' + escAttr(fullName) + '</td>' +
+            '<td style="font-size:13px;color:#64748b">' + escAttr(s.phone || '—') + '</td>' +
+            '<td>' + escAttr(s.planLabel || s.plan || '—') + '</td>' +
+            '<td style="font-size:13px">' + escAttr(s.product?.name || s.productName || '—') + '</td>' +
+            '<td>' + statusBadge(s.status) + '</td>' +
+            '<td>' + amountDisplay + '</td>' +
+            '<td style="font-size:12px">' + fmtDate(s.nextRenewalDate || s.renewsAt) + '</td>' +
+            '<td><div style="display:flex;gap:6px">' +
+              '<button class="btn btn-secondary btn-sm" onclick="viewSubscription(\'' + id + '\')">View</button>' +
+              (s.status === 'active' ? '<button class="btn btn-danger btn-sm" onclick="cancelSub(\'' + id + '\')">Cancel</button>' : '') +
+              (s.status === 'cancelled' || s.status === 'expired' ? '<button class="btn btn-success btn-sm" onclick="reactivateSub(\'' + id + '\')">Reactivate</button>' : '') +
             '</div></td></tr>';
         }).join('') +
         '</tbody></table></div>';
@@ -1200,19 +1215,20 @@ async function loadPanelPlans() {
     const data = await api('GET', '/products/' + currentProductId);
     const product = data.product || data;
     const plans = product.plans || [];
-    if (!plans.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No plans yet</p></div>'; return; }
-    wrap.innerHTML = '<div class="plans-list">' + plans.map(pl => {
+    const activePlans = plans.filter(pl => pl.active !== false);
+    if (!activePlans.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No plans yet</p></div>'; return; }
+    wrap.innerHTML = '<div class="plans-list">' + activePlans.map(pl => {
       const pid = pl._id || pl.id;
-      return `<div class="plan-item ${pl.active === false ? 'inactive' : ''}">
+      const amountDisplay = pl.amountCents ? fmt(pl.amountCents / 100) : (pl.amount ? fmt(pl.amount) : 'EGP 0.00');
+      const planTypeDisplay = pl.planType || pl.interval || 'monthly';
+      return `<div class="plan-item">
         <div class="plan-info">
           <div class="plan-name">${escAttr(pl.label || pl.name || 'Plan')} ${pl.badge ? '<span class="badge badge-purple">' + escAttr(pl.badge) + '</span>' : ''}</div>
-          <div class="plan-meta">${pl.type || 'recurring'} · ${pl.interval || 'monthly'}</div>
+          <div class="plan-meta">${pl.type || 'recurring'} · ${planTypeDisplay}</div>
         </div>
-        <div class="plan-price">${fmt(pl.amount)}</div>
+        <div class="plan-price">${amountDisplay}</div>
         <div style="display:flex;gap:8px;margin-left:12px">
-          ${pl.active === false
-            ? '<button class="btn btn-success btn-sm" onclick="togglePlan(\'' + pid + '\',true)">Activate</button>'
-            : '<button class="btn btn-danger btn-sm" onclick="togglePlan(\'' + pid + '\',false)">Deactivate</button>'}
+          <button class="btn btn-danger btn-sm" onclick="deletePlan('${pid}')">Delete</button>
         </div>
       </div>`;
     }).join('') + '</div>';
@@ -1222,6 +1238,16 @@ async function loadPanelPlans() {
 async function togglePlan(planId, active) {
   try { await api('PUT', '/products/' + currentProductId + '/plans/' + planId, { active }); toast('Plan ' + (active ? 'activated' : 'deactivated'), 'success'); loadPanelPlans(); }
   catch (e) { toast(e.message, 'error'); }
+}
+
+function deletePlan(planId) {
+  confirm2('Delete Plan', 'Are you sure you want to delete this plan? It will no longer appear on the checkout page.', async () => {
+    try {
+      await api('PUT', '/products/' + currentProductId + '/plans/' + planId, { active: false });
+      toast('Plan deleted', 'success');
+      loadPanelPlans();
+    } catch (e) { toast(e.message, 'error'); }
+  });
 }
 
 function openAddPlanModal() {

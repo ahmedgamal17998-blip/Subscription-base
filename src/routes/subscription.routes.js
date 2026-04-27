@@ -31,10 +31,10 @@ router.post('/trigger-cron', requireAdmin, async (req, res) => {
 
 router.get('/', requireAnyRole, async (req, res) => {
   try {
-    const { status, productId } = req.query;
+    const { status, productId, search } = req.query;
     const page = Math.max(+(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(+(req.query.limit) || 20, 1), 100);
-    const result = await subscriptionService.listSubscriptions({ status, page, limit, productId: productId ? +productId : undefined });
+    const result = await subscriptionService.listSubscriptions({ status, page, limit, productId: productId ? +productId : undefined, search: search || '' });
     return res.status(200).json(result);
   } catch (err) {
     log('ERROR', 'subscriptions', 'Failed to list subscriptions', { error: err.message });
