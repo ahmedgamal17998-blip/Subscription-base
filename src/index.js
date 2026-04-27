@@ -30,12 +30,38 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
+      scriptSrc: [
+        "'self'", "'unsafe-inline'",
+        "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com",
+        // Tracking pixels — allow common providers
+        "https://connect.facebook.net",
+        "https://www.googletagmanager.com",
+        "https://www.google-analytics.com",
+        "https://*.google-analytics.com",
+        "https://www.google.com",
+        "https://analytics.tiktok.com",
+        "https://*.tiktok.com",
+        "https://snap.licdn.com",
+        "https://sc-static.net",
+      ],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
+      connectSrc: [
+        "'self'",
+        // Tracking pixels — allow analytics endpoints
+        "https://www.facebook.com",
+        "https://*.facebook.com",
+        "https://www.google-analytics.com",
+        "https://*.google-analytics.com",
+        "https://analytics.google.com",
+        "https://www.google.com",
+        "https://analytics.tiktok.com",
+        "https://*.tiktok.com",
+        "https://px.ads.linkedin.com",
+        "https://tr.snapchat.com",
+      ],
       frameSrc: ["https://accept.paymob.com", "*"],
       frameAncestors: ["*"], // allow this page to be embedded in iframes from any domain
     },

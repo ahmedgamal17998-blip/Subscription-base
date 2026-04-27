@@ -344,9 +344,9 @@ tr:hover td{background:#fafbfc}
         <div class="page" id="page-analytics">
           <div class="filters" style="margin-bottom:24px">
             <select class="filter-select" id="analytics-months" onchange="loadAnalytics()">
-              <option value="6">Last 6 months</option>
+              <option value="1">Last month</option>
+              <option value="3">Last 3 months</option>
               <option value="12" selected>Last 12 months</option>
-              <option value="24">Last 24 months</option>
             </select>
             <select class="filter-select" id="analytics-product" onchange="loadAnalytics()">
               <option value="">All Products</option>
@@ -1099,21 +1099,27 @@ async function loadProductsList() {
     wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📦</div><p>No products yet. Create your first product.</p></div>';
     return;
   }
+  const baseUrl = window.location.origin;
   wrap.innerHTML = allProducts.map(p => {
     const id = p._id || p.id;
+    const slug = p.slug || '';
+    const checkoutLink = baseUrl + '/subscribe/' + slug;
+    const subsCount = p._count?.subscriptions ?? p.subscriptionCount ?? 0;
+    const isActive = p.isActive !== undefined ? p.isActive : (p.active !== false);
     return `<div class="product-card" onclick="openProductPanel('${id}')">
       <div class="product-card-header">
         <div class="product-card-title">${escAttr(p.name)}</div>
-        <span class="badge ${p.type === 'one_time' ? 'badge-blue' : 'badge-indigo'}">${p.type || 'subscription'}</span>
-        ${p.active === false ? '<span class="badge badge-gray">Inactive</span>' : '<span class="badge badge-green">Active</span>'}
+        <span class="badge ${p.productType === 'one_time' || p.type === 'one_time' ? 'badge-blue' : 'badge-indigo'}">${p.productType || p.type || 'subscription'}</span>
+        ${!isActive ? '<span class="badge badge-gray">Inactive</span>' : '<span class="badge badge-green">Active</span>'}
+        <button class="btn btn-secondary btn-sm" style="margin-left:auto" title="Copy checkout link" onclick="event.stopPropagation();navigator.clipboard.writeText('${checkoutLink}').then(()=>toast('Checkout link copied!','success'))">🔗</button>
         <label class="toggle" onclick="event.stopPropagation()" title="Toggle active">
-          <input type="checkbox" ${p.active !== false ? 'checked' : ''} onchange="toggleProduct('${id}',this.checked)">
+          <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleProduct('${id}',this.checked)">
           <span class="toggle-slider"></span>
         </label>
       </div>
       <div class="product-card-meta">
         <span>📋 ${(p.plans || []).length} plan${(p.plans || []).length !== 1 ? 's' : ''}</span>
-        <span>👥 ${(p.subscriptionCount || 0).toLocaleString()} subscribers</span>
+        <span>👥 ${subsCount.toLocaleString()} subscribers</span>
         ${p.description ? '<span>📝 ' + escAttr(p.description.substring(0, 70)) + (p.description.length > 70 ? '…' : '') + '</span>' : ''}
       </div>
     </div>`;
@@ -1121,7 +1127,7 @@ async function loadProductsList() {
 }
 
 async function toggleProduct(id, active) {
-  try { await api('PUT', '/products/' + id, { active }); toast('Product ' + (active ? 'activated' : 'deactivated'), 'success'); await loadAllProducts(); }
+  try { await api('PUT', '/products/' + id, { isActive: active }); toast('Product ' + (active ? 'activated' : 'deactivated'), 'success'); await loadAllProducts(); }
   catch (e) { toast(e.message, 'error'); }
 }
 
@@ -1223,12 +1229,10 @@ async function loadPanelPlans() {
     const plans = product.plans || [];
     const activePlans = plans.filter(pl => pl.isActive !== false);
     if (!activePlans.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No plans yet</p></div>'; return; }
-    const baseUrl = window.location.origin;
     wrap.innerHTML = '<div class="plans-list">' + activePlans.map(pl => {
       const pid = pl._id || pl.id;
       const amountDisplay = pl.amountCents ? fmt(pl.amountCents) : 'EGP 0.00';
       const planTypeDisplay = pl.planType || pl.intervalLabel || 'monthly';
-      const checkoutLink = baseUrl + '/subscribe/' + (currentProductSlug || '') + '?plan=' + (pl.planType || '');
       return `<div class="plan-item">
         <div class="plan-info">
           <div class="plan-name">${escAttr(pl.label || pl.name || 'Plan')} ${pl.badge ? '<span class="badge badge-purple">' + escAttr(pl.badge) + '</span>' : ''}</div>
@@ -1236,7 +1240,6 @@ async function loadPanelPlans() {
         </div>
         <div class="plan-price">${amountDisplay}</div>
         <div style="display:flex;gap:8px;margin-left:12px">
-          <button class="btn btn-secondary btn-sm" title="Copy checkout link" onclick="navigator.clipboard.writeText('${checkoutLink}').then(()=>toast('Link copied!','success'))">🔗</button>
           <button class="btn btn-danger btn-sm" onclick="deletePlan('${pid}')">Delete</button>
         </div>
       </div>`;
@@ -1353,13 +1356,13 @@ async function loadAnalytics() {
       api('GET', '/analytics/monthly?months=' + months + (productId ? '&productId=' + encodeURIComponent(productId) : '')),
       api('GET', '/analytics/conversion' + pq)
     ]);
-    const o = overview.data || overview;
+    const o = overview.kpis || overview.data || overview;
     kpisEl.innerHTML = `
       <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-label">MRR</div><div class="stat-value" style="font-size:20px">${fmt(o.mrr||0)}</div></div>
       <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-label">Total Revenue</div><div class="stat-value" style="font-size:20px">${fmt(o.totalRevenue||0)}</div></div>
-      <div class="stat-card"><div class="stat-icon">🆕</div><div class="stat-label">Initial Revenue</div><div class="stat-value" style="font-size:20px">${fmt(o.initialRevenue||0)}</div></div>
-      <div class="stat-card"><div class="stat-icon">🔁</div><div class="stat-label">Renewal Revenue</div><div class="stat-value" style="font-size:20px">${fmt(o.renewalRevenue||0)}</div></div>
-      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-label">New Subs (30d)</div><div class="stat-value">${(o.newSubscriptions30d||o.newSubs||0).toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-icon">🆕</div><div class="stat-label">Initial Revenue</div><div class="stat-value" style="font-size:20px">${fmt(o.totalInitialRevenue||o.initialRevenue||0)}</div></div>
+      <div class="stat-card"><div class="stat-icon">🔁</div><div class="stat-label">Renewal Revenue</div><div class="stat-value" style="font-size:20px">${fmt(o.totalRenewalRevenue||o.renewalRevenue||0)}</div></div>
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-label">New Subs (30d)</div><div class="stat-value">${(o.newSubs30||o.newSubscriptions30d||o.newSubs||0).toLocaleString()}</div></div>
     `;
     renderRevenueChart(monthly);
     renderSubsChart(monthly);
