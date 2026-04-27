@@ -26,6 +26,7 @@ app.set('trust proxy', 1);
 
 // ── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet({
+  frameguard: false, // disable X-Frame-Options so our custom header takes effect
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -35,7 +36,8 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"],
-      frameSrc: ["https://accept.paymob.com", "*"], // allow iframe embed from any domain
+      frameSrc: ["https://accept.paymob.com", "*"],
+      frameAncestors: ["*"], // allow this page to be embedded in iframes from any domain
     },
   },
   crossOriginEmbedderPolicy: false,
