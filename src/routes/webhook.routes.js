@@ -134,6 +134,7 @@ router.post('/paymob', verifyHmac, async (req, res) => {
       const eventName = type === 'renewal' ? 'renewal_failed' : 'payment_failed';
 
       await dispatch(eventName, {
+        type,
         full_name: `${failedSub.firstName} ${failedSub.lastName}`,
         email: failedSub.email,
         phone: failedSub.phone,
@@ -141,8 +142,13 @@ router.post('/paymob', verifyHmac, async (req, res) => {
         product_name: failedSub.product?.name || '',
         product_id: failedSub.product?.id ? String(failedSub.product.id) : '',
         payment_status: 'failed',
+        payment_method: paymentMethod || 'card',
+        amount: amountCents / 100,
+        currency: failedSub.currency || 'EGP',
         fail_reason: failReason || '',
         date_of_creation: failedSub.createdAt,
+        next_renewal: failedSub.nextRenewalDate,
+        transaction_id: String(transactionId),
         subscription_id: failedSub.id,
       }, failedSub.productId);
 
@@ -218,12 +224,16 @@ router.post('/paymob-subscription', async (req, res) => {
       if (sub) {
         await subscriptionService.markCancelled(sub.id);
         await dispatch('cancelled', {
+          type: 'cancelled',
           full_name: `${sub.firstName} ${sub.lastName}`,
           email: sub.email, phone: sub.phone, plan: sub.plan,
           product_name: sub.product?.name || '',
           product_id: sub.product?.id ? String(sub.product.id) : '',
           payment_status: 'cancelled',
+          amount: (sub.amountCents || 0) / 100,
+          currency: sub.currency || 'EGP',
           date_of_creation: sub.createdAt,
+          next_renewal: sub.nextRenewalDate,
           subscription_id: sub.id,
         }, sub.productId);
         log('INFO', 'sub-webhook', `Subscription #${sub.id} suspended`);

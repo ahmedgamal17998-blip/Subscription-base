@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const { requireAdmin, requireSupport, requireAnyRole } = require('../middleware/auth.middleware');
 const subscriptionService = require('../services/subscription.service');
 const ghlService = require('../services/ghl.service');
+const { dispatch } = require('../services/webhook-dispatch.service');
 const { log } = require('../utils/logger');
 
 const router = express.Router();
@@ -81,6 +82,24 @@ router.post('/:id/cancel', requireAdmin, async (req, res) => {
       createdAt: result.subscription.createdAt,
       productName: result.subscription.product?.name, productId: result.subscription.product?.id,
     });
+
+    // Fire outbound webhooks for cancel_requested
+    await dispatch('cancel_requested', {
+      type: 'cancel_requested',
+      full_name: `${result.subscription.firstName} ${result.subscription.lastName}`,
+      email: result.subscription.email,
+      phone: result.subscription.phone,
+      plan: result.subscription.plan,
+      product_name: result.subscription.product?.name || '',
+      product_id: result.subscription.product?.id ? String(result.subscription.product.id) : '',
+      payment_status: 'cancel_requested',
+      amount: (result.subscription.amountCents || 0) / 100,
+      currency: result.subscription.currency || 'EGP',
+      active_until: result.activeUntil,
+      date_of_creation: result.subscription.createdAt,
+      subscription_id: subscriptionId,
+    }, result.subscription.productId);
+
     return res.status(200).json({
       success: true,
       message: 'Subscription will remain active until the end of the current billing period.',

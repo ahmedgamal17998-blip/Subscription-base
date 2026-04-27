@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const subscriptionService = require('../services/subscription.service');
 const ghlService = require('../services/ghl.service');
+const { dispatch } = require('../services/webhook-dispatch.service');
 const { log } = require('../utils/logger');
 
 async function runCleanupJob() {
@@ -32,6 +33,26 @@ async function runCleanupJob() {
           createdAt: sub.createdAt,
           productName: sub.product?.name, productId: sub.product?.id,
         });
+
+        // Fire outbound webhooks — cancelled (period ended) + expired
+        const cancelPayload = {
+          type: 'cancelled',
+          full_name: `${sub.firstName} ${sub.lastName}`,
+          email: sub.email,
+          phone: sub.phone,
+          plan: sub.plan,
+          product_name: sub.product?.name || '',
+          product_id: sub.product?.id ? String(sub.product.id) : '',
+          payment_status: 'cancelled',
+          amount: (sub.amountCents || 0) / 100,
+          currency: sub.currency || 'EGP',
+          date_of_creation: sub.createdAt,
+          next_renewal: sub.nextRenewalDate,
+          subscription_id: sub.id,
+        };
+        await dispatch('cancelled', cancelPayload, sub.productId);
+        await dispatch('expired', { ...cancelPayload, type: 'expired', payment_status: 'expired' }, sub.productId);
+
         log('INFO', 'cleanup.job', `CANCEL #${sub.id} ${sub.email} — period ended`);
       } catch (err) {
         log('ERROR', 'cleanup.job', `CANCEL #${sub.id} failed`, { error: err.message });

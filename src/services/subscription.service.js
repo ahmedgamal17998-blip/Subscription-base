@@ -175,6 +175,7 @@ async function cancelSubscription(subscriptionId) {
   const updated = await prisma.subscription.update({
     where: { id: subscriptionId },
     data: { cancelledAt: new Date() },
+    include: { product: true },
   });
   return { subscription: updated, activeUntil: sub.nextRenewalDate };
 }
