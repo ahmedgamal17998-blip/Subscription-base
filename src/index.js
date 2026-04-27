@@ -43,6 +43,9 @@ app.use(helmet({
         "https://*.tiktok.com",
         "https://snap.licdn.com",
         "https://sc-static.net",
+        // Microsoft Clarity
+        "https://www.clarity.ms",
+        "https://*.clarity.ms",
       ],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
@@ -61,6 +64,9 @@ app.use(helmet({
         "https://*.tiktok.com",
         "https://px.ads.linkedin.com",
         "https://tr.snapchat.com",
+        // Microsoft Clarity
+        "https://www.clarity.ms",
+        "https://*.clarity.ms",
       ],
       frameSrc: ["https://accept.paymob.com", "*"],
       frameAncestors: ["*"], // allow this page to be embedded in iframes from any domain
