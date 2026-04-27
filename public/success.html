@@ -239,6 +239,61 @@
   if (productName) {
     document.getElementById('product-label').textContent = productName + ' ';
   }
+
+  // ── Universal tracking helper — fires Purchase to Facebook/Google/TikTok pixels ──
+  function trackEvent(eventName, p) {
+    p = p || {};
+    try {
+      if (typeof window.fbq === 'function') window.fbq('track', eventName, p);
+      if (typeof window.gtag === 'function') {
+        const gaMap = { Purchase: 'purchase', Lead: 'generate_lead' };
+        window.gtag('event', gaMap[eventName] || eventName.toLowerCase(), p);
+      }
+      if (typeof window.ttq !== 'undefined' && typeof window.ttq.track === 'function') window.ttq.track(eventName, p);
+    } catch (e) {}
+  }
+
+  // Inject head code from product settings, then fire Purchase
+  (async function() {
+    const productSlug = params.get('product_slug');
+    const amount = parseFloat(params.get('amount')) || undefined;
+    const currency = params.get('currency') || 'EGP';
+    const subId = params.get('sub') || undefined;
+
+    if (productSlug) {
+      try {
+        const res = await fetch('/api/products/slug/' + encodeURIComponent(productSlug) + '/config');
+        if (res.ok) {
+          const data = await res.json();
+          const headCode = data.settings && data.settings.headCode;
+          if (headCode) {
+            const container = document.createElement('div');
+            container.innerHTML = headCode;
+            Array.from(container.children).forEach(node => {
+              if (node.tagName === 'SCRIPT') {
+                const s = document.createElement('script');
+                if (node.src) s.src = node.src;
+                else s.textContent = node.textContent;
+                document.head.appendChild(s);
+              } else {
+                document.head.appendChild(node.cloneNode(true));
+              }
+            });
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    // Fire Purchase after pixel has time to initialize
+    setTimeout(() => {
+      trackEvent('Purchase', {
+        value: amount,
+        currency: currency,
+        content_name: productName || undefined,
+        content_ids: subId ? [subId] : undefined,
+      });
+    }, 800);
+  })();
 </script>
 </body>
 </html>

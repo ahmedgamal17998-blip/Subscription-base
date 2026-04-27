@@ -258,6 +258,9 @@ router.get('/paymob-redirect', async (req, res) => {
   let productName = '';
   let customSuccessUrl = null;
   let customFailureUrl = null;
+  let amountValue = '';
+  let currencyValue = '';
+  let subId = '';
 
   if (orderId) {
     try {
@@ -265,6 +268,9 @@ router.get('/paymob-redirect', async (req, res) => {
       if (sub?.product) {
         productSlug = sub.product.slug;
         productName = sub.product.name;
+        amountValue = sub.amountCents ? (sub.amountCents / 100).toString() : '';
+        currencyValue = sub.currency || 'EGP';
+        subId = String(sub.id);
 
         // Load custom redirect URLs from product settings
         const settings = await prisma.productSettings.findUnique({
@@ -283,6 +289,9 @@ router.get('/paymob-redirect', async (req, res) => {
     const params = new URLSearchParams();
     if (productSlug) params.set('product_slug', productSlug);
     if (productName) params.set('product', productName);
+    if (amountValue) params.set('amount', amountValue);
+    if (currencyValue) params.set('currency', currencyValue);
+    if (subId) params.set('sub', subId);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return res.redirect(`/success.html${qs}`);
   } else {

@@ -923,7 +923,31 @@
             document.head.appendChild(node.cloneNode(true));
           }
         });
+        // Fire InitiateCheckout to all installed pixels — wait briefly for pixel scripts to load
+        setTimeout(() => trackEvent('InitiateCheckout'), 800);
       }
+    }
+
+    // ── Universal tracking helper — fires events to Facebook/Google/TikTok pixels ──
+    function trackEvent(eventName, params) {
+      params = params || {};
+      try {
+        // Facebook Pixel
+        if (typeof window.fbq === 'function') {
+          window.fbq('track', eventName, params);
+        }
+        // Google Analytics 4 / gtag
+        if (typeof window.gtag === 'function') {
+          // Map FB events to GA equivalents
+          const gaMap = { InitiateCheckout: 'begin_checkout', Lead: 'generate_lead', Purchase: 'purchase' };
+          const gaEvent = gaMap[eventName] || eventName.toLowerCase();
+          window.gtag('event', gaEvent, params);
+        }
+        // TikTok Pixel
+        if (typeof window.ttq !== 'undefined' && typeof window.ttq.track === 'function') {
+          window.ttq.track(eventName, params);
+        }
+      } catch (e) { /* never break checkout because of tracking */ }
     }
 
     // Coupon validation
@@ -1140,6 +1164,12 @@
         var data = await res.json();
 
         if (res.ok) {
+          // Fire Lead event before redirect to Paymob
+          trackEvent('Lead', {
+            content_name: plan,
+            value: currentAmountCents ? (currentAmountCents / 100) : undefined,
+            currency: 'EGP',
+          });
           window.location.href = data.checkoutUrl;
           return;
         }
