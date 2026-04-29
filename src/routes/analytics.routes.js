@@ -6,6 +6,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const prisma = require('../db');
 const { requireAnyRole } = require('../middleware/auth.middleware');
+const { requireAuthOrApiKey } = require('../middleware/api-key.middleware');
 const { log } = require('../utils/logger');
 
 const router = express.Router();
@@ -13,7 +14,7 @@ const limiter = rateLimit({ windowMs: 60 * 1000, limit: 60 });
 
 // ── GET /api/analytics/overview ───────────────────────────────────────────────
 // High-level KPIs: MRR, total revenue, active subs, churn, etc.
-router.get('/overview', limiter, requireAnyRole, async (req, res) => {
+router.get('/overview', limiter, requireAuthOrApiKey('analytics:read'), async (req, res) => {
   try {
     const { productId } = req.query;
     const pId = productId ? parseInt(productId) : undefined;
@@ -99,7 +100,7 @@ router.get('/overview', limiter, requireAnyRole, async (req, res) => {
 // ── GET /api/analytics/monthly ────────────────────────────────────────────────
 // Monthly breakdown: new subs, revenue (initial + renewals), cancellations
 // Query: ?months=12&productId=
-router.get('/monthly', limiter, requireAnyRole, async (req, res) => {
+router.get('/monthly', limiter, requireAuthOrApiKey('analytics:read'), async (req, res) => {
   try {
     const months = Math.min(Math.max(parseInt(req.query.months) || 12, 1), 24);
     const productId = req.query.productId ? parseInt(req.query.productId) : undefined;
@@ -154,7 +155,7 @@ router.get('/monthly', limiter, requireAnyRole, async (req, res) => {
 
 // ── GET /api/analytics/payments ───────────────────────────────────────────────
 // Recent payments list with filters
-router.get('/payments', limiter, requireAnyRole, async (req, res) => {
+router.get('/payments', limiter, requireAuthOrApiKey('analytics:read'), async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
@@ -193,7 +194,7 @@ router.get('/payments', limiter, requireAnyRole, async (req, res) => {
 
 // ── GET /api/analytics/conversion ────────────────────────────────────────────
 // Conversion: pending → active, abandoned, success rate per product
-router.get('/conversion', limiter, requireAnyRole, async (req, res) => {
+router.get('/conversion', limiter, requireAuthOrApiKey('analytics:read'), async (req, res) => {
   try {
     const products = await prisma.product.findMany({
       where: { isActive: true },

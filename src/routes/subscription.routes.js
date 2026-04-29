@@ -1,6 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { requireAdmin, requireSupport, requireAnyRole } = require('../middleware/auth.middleware');
+const { requireAuthOrApiKey } = require('../middleware/api-key.middleware');
 const subscriptionService = require('../services/subscription.service');
 const ghlService = require('../services/ghl.service');
 const { dispatch } = require('../services/webhook-dispatch.service');
@@ -29,7 +30,7 @@ router.post('/trigger-cron', requireAdmin, async (req, res) => {
   return res.status(200).json({ success: true, message: 'Cron job triggered manually.' });
 });
 
-router.get('/', requireAnyRole, async (req, res) => {
+router.get('/', requireAuthOrApiKey('subscriptions:read'), async (req, res) => {
   try {
     const { status, productId, search } = req.query;
     const page = Math.max(+(req.query.page) || 1, 1);
@@ -42,7 +43,7 @@ router.get('/', requireAnyRole, async (req, res) => {
   }
 });
 
-router.get('/:id', requireAnyRole, async (req, res) => {
+router.get('/:id', requireAuthOrApiKey('subscriptions:read'), async (req, res) => {
   try {
     const sub = await subscriptionService.getSubscriptionWithPayments(req.params.id);
     if (!sub) return res.status(404).json({ error: 'Subscription not found' });
@@ -53,7 +54,7 @@ router.get('/:id', requireAnyRole, async (req, res) => {
   }
 });
 
-router.post('/:id/cancel', requireAdmin, async (req, res) => {
+router.post('/:id/cancel', requireAuthOrApiKey('subscriptions:write'), async (req, res) => {
   try {
     const subscriptionId = parseInt(req.params.id);
     if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {
@@ -117,7 +118,7 @@ router.post('/:id/cancel', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/:id/reactivate', requireAdmin, async (req, res) => {
+router.post('/:id/reactivate', requireAuthOrApiKey('subscriptions:write'), async (req, res) => {
   try {
     const subscriptionId = parseInt(req.params.id);
     if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {

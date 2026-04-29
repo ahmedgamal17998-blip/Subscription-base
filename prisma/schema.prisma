@@ -175,6 +175,30 @@ model Coupon {
 //  Outbound Webhooks (replaces hardcoded GHL URL)
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+//  API Keys (external integrations)
+// ─────────────────────────────────────────────
+
+model ApiKey {
+  id          Int       @id @default(autoincrement())
+  name        String
+  keyHash     String    @unique  // SHA-256 hash of the full key
+  keyPrefix   String             // first 16 chars for display e.g. sk_live_xxxxxxxx
+  scopes      String             // comma-separated: subscriptions:read,analytics:read,...
+  isActive    Boolean   @default(true)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?          // null = never expires
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([keyHash])
+  @@index([isActive])
+}
+
+// ─────────────────────────────────────────────
+//  Outbound Webhooks (replaces hardcoded GHL URL)
+// ─────────────────────────────────────────────
+
 model OutboundWebhook {
   id          Int      @id @default(autoincrement())
   name        String

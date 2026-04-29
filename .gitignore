@@ -8,3 +8,4 @@ prisma/migrations/
 .claude/
 specs/
 .playwright-mcp/
+.vercel

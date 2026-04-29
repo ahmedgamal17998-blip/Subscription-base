@@ -272,6 +272,7 @@ tr:hover td{background:#fafbfc}
         <div class="nav-item" data-page="analytics"><span class="nav-icon">📈</span><span class="nav-label">Analytics</span></div>
         <div class="nav-item admin-only" data-page="webhooks"><span class="nav-icon">🔗</span><span class="nav-label">Webhooks</span></div>
         <div class="nav-item admin-only" data-page="coupons"><span class="nav-icon">🎟️</span><span class="nav-label">Coupons</span></div>
+        <div class="nav-item admin-only" data-page="apikeys"><span class="nav-icon">🔑</span><span class="nav-label">API Keys</span></div>
         <div class="nav-item admin-only" data-page="team"><span class="nav-icon">👥</span><span class="nav-label">Team</span></div>
         <div class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></div>
       </nav>
@@ -390,6 +391,44 @@ tr:hover td{background:#fafbfc}
           <div class="table-card">
             <div class="table-header"><h3>Coupons</h3></div>
             <div id="coupons-wrap"><div class="loading-state"><div class="spinner spinner-dark"></div> Loading...</div></div>
+          </div>
+        </div>
+
+        <!-- API KEYS -->
+        <div class="page" id="page-apikeys">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+            <div>
+              <h2 style="font-size:18px;font-weight:700;color:#1e293b">API Keys</h2>
+              <p style="font-size:13px;color:#64748b;margin-top:4px">Use API keys to connect external tools (n8n, Zapier, custom code) to your system</p>
+            </div>
+            <button class="btn btn-primary" onclick="openApiKeyModal()">+ New API Key</button>
+          </div>
+
+          <!-- Usage guide -->
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:16px 20px;margin-bottom:20px">
+            <p style="font-size:13px;font-weight:600;color:#0369a1;margin-bottom:8px">📡 How to use</p>
+            <p style="font-size:13px;color:#0c4a6e;margin-bottom:6px">Add this header to your HTTP requests:</p>
+            <code style="display:block;background:#0c4a6e;color:#7dd3fc;padding:10px 14px;border-radius:6px;font-size:13px;font-family:monospace">x-api-key: sk_live_your_key_here</code>
+            <p style="font-size:12px;color:#0369a1;margin-top:10px;font-weight:500">Available endpoints:</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px" id="api-endpoints-list">
+              <span style="font-size:12px;color:#0c4a6e;font-family:monospace">GET /api/subscriptions</span>
+              <span style="font-size:12px;color:#64748b">→ subscriptions:read</span>
+              <span style="font-size:12px;color:#0c4a6e;font-family:monospace">GET /api/subscriptions/:id</span>
+              <span style="font-size:12px;color:#64748b">→ subscriptions:read</span>
+              <span style="font-size:12px;color:#0c4a6e;font-family:monospace">POST /api/subscriptions/:id/cancel</span>
+              <span style="font-size:12px;color:#64748b">→ subscriptions:write</span>
+              <span style="font-size:12px;color:#0c4a6e;font-family:monospace">POST /api/subscriptions/:id/reactivate</span>
+              <span style="font-size:12px;color:#64748b">→ subscriptions:write</span>
+              <span style="font-size:12px;color:#0c4a6e;font-family:monospace">GET /api/analytics/overview</span>
+              <span style="font-size:12px;color:#64748b">→ analytics:read</span>
+              <span style="font-size:12px;color:#0c4a6e;font-family:monospace">GET /api/products</span>
+              <span style="font-size:12px;color:#64748b">→ products:read</span>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-header"><h3>Your API Keys</h3></div>
+            <div id="apikeys-wrap"><div class="loading-state"><div class="spinner spinner-dark"></div> Loading…</div></div>
           </div>
         </div>
 
@@ -606,6 +645,66 @@ tr:hover td{background:#fafbfc}
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('plan-modal')">Cancel</button>
       <button class="btn btn-primary" onclick="savePlan()">Save Plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="modal-overlay" id="apikey-modal" style="display:none" onclick="closeModalOverlay(event,'apikey-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:500px">
+    <div class="modal-header">
+      <h3 id="apikey-modal-title">New API Key</h3>
+      <button class="modal-close" onclick="closeModal('apikey-modal')">✕</button>
+    </div>
+    <div style="padding:20px">
+      <input type="hidden" id="apikey-edit-id">
+
+      <div class="form-group">
+        <label>Key Name *</label>
+        <input type="text" id="apikey-name" placeholder="e.g. n8n Integration, Zapier">
+      </div>
+
+      <div class="form-group">
+        <label>Scopes * <span style="font-size:11px;color:#94a3b8">(select what this key can do)</span></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px" id="scopes-checkboxes">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-weight:400">
+            <input type="checkbox" value="subscriptions:read" style="width:auto"> subscriptions:read
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-weight:400">
+            <input type="checkbox" value="subscriptions:write" style="width:auto"> subscriptions:write
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-weight:400">
+            <input type="checkbox" value="analytics:read" style="width:auto"> analytics:read
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-weight:400">
+            <input type="checkbox" value="products:read" style="width:auto"> products:read
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-weight:400">
+            <input type="checkbox" value="webhooks:read" style="width:auto"> webhooks:read
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-weight:400">
+            <input type="checkbox" value="webhooks:write" style="width:auto"> webhooks:write
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Expiry Date <span style="font-size:11px;color:#94a3b8">(optional — leave blank = never expires)</span></label>
+        <input type="date" id="apikey-expires">
+      </div>
+
+      <div id="apikey-result" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-bottom:16px">
+        <p style="font-size:12px;font-weight:600;color:#15803d;margin-bottom:8px">⚠️ Copy your API key now — it won't be shown again!</p>
+        <div style="display:flex;align-items:center;gap:8px">
+          <code id="apikey-value" style="flex:1;background:#fff;border:1px solid #bbf7d0;padding:8px 10px;border-radius:6px;font-size:12px;font-family:monospace;word-break:break-all;color:#15803d"></code>
+          <button class="btn btn-sm btn-success" onclick="copyApiKey()">Copy</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closeModal('apikey-modal')">Cancel</button>
+        <button class="btn btn-primary" id="apikey-save-btn" onclick="saveApiKey()">Create Key</button>
+      </div>
     </div>
   </div>
 </div>
@@ -912,7 +1011,7 @@ document.getElementById('sidebar-nav').addEventListener('click', e => {
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
 function loadPage(page) {
-  const map = { dashboard: loadDashboard, subscriptions: () => loadSubscriptions(1), products: loadProductsList, analytics: loadAnalytics, webhooks: loadWebhooks, coupons: loadCoupons, team: loadTeam, settings: loadSettings };
+  const map = { dashboard: loadDashboard, subscriptions: () => loadSubscriptions(1), products: loadProductsList, analytics: loadAnalytics, webhooks: loadWebhooks, coupons: loadCoupons, apikeys: loadApiKeys, team: loadTeam, settings: loadSettings };
   if (map[page]) map[page]();
 }
 
@@ -1404,6 +1503,108 @@ function renderConversionTable(data) {
   wrap.innerHTML = '<table><thead><tr><th>Product</th><th>Visits</th><th>Conversions</th><th>Rate</th></tr></thead><tbody>' +
     rows.map(r => '<tr><td>' + escAttr(r.productName || r.name || '—') + '</td><td>' + (r.visits || 0).toLocaleString() + '</td><td>' + (r.conversions || 0).toLocaleString() + '</td><td>' + ((r.rate || r.conversionRate || 0) * 100).toFixed(1) + '%</td></tr>').join('') +
     '</tbody></table>';
+}
+
+// ============================================================
+// API KEYS
+// ============================================================
+async function loadApiKeys() {
+  const wrap = document.getElementById('apikeys-wrap');
+  wrap.innerHTML = '<div class="loading-state"><div class="spinner spinner-dark"></div> Loading…</div>';
+  try {
+    const keys = await api('GET', '/api-keys');
+    if (!keys.length) {
+      wrap.innerHTML = '<div class="empty-state"><p>No API keys yet. Create one to connect external tools.</p></div>';
+      return;
+    }
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+    const fmtTime = d => d ? new Date(d).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Never';
+    const scopeBadge = s => `<span style="display:inline-block;padding:2px 7px;background:#ede9fe;color:#6d28d9;border-radius:4px;font-size:11px;font-weight:500;margin:1px">${s}</span>`;
+    wrap.innerHTML = `<div style="overflow-x:auto"><table class="table">
+      <thead><tr><th>Name</th><th>Key</th><th>Scopes</th><th>Last Used</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>${keys.map(k => `<tr>
+        <td style="font-weight:500">${k.name}</td>
+        <td><code style="font-family:monospace;font-size:12px;background:#f8fafc;padding:3px 7px;border-radius:4px;border:1px solid #e2e8f0">${k.keyPrefix}••••••••</code></td>
+        <td>${k.scopes.split(',').map(scopeBadge).join('')}</td>
+        <td style="font-size:12px;color:#64748b">${fmtTime(k.lastUsedAt)}</td>
+        <td style="font-size:12px;color:${k.expiresAt && new Date(k.expiresAt) < new Date() ? '#ef4444' : '#64748b'}">${fmtDate(k.expiresAt)}</td>
+        <td>${k.isActive ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Revoked</span>'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-secondary" onclick="editApiKey(${k.id},'${k.name}','${k.scopes}','${k.expiresAt||''}',${k.isActive})">Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteApiKey(${k.id},'${k.name}')">Revoke</button>
+          </div>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  } catch (e) { wrap.innerHTML = `<div class="empty-state"><p>Error: ${e.message}</p></div>`; }
+}
+
+function openApiKeyModal() {
+  document.getElementById('apikey-edit-id').value = '';
+  document.getElementById('apikey-name').value = '';
+  document.getElementById('apikey-expires').value = '';
+  document.getElementById('apikey-result').style.display = 'none';
+  document.getElementById('apikey-modal-title').textContent = 'New API Key';
+  document.getElementById('apikey-save-btn').textContent = 'Create Key';
+  document.getElementById('apikey-save-btn').disabled = false;
+  document.querySelectorAll('#scopes-checkboxes input[type=checkbox]').forEach(cb => cb.checked = false);
+  document.getElementById('apikey-modal').style.display = 'flex';
+}
+
+function editApiKey(id, name, scopes, expiresAt, isActive) {
+  document.getElementById('apikey-edit-id').value = id;
+  document.getElementById('apikey-name').value = name;
+  document.getElementById('apikey-expires').value = expiresAt ? expiresAt.slice(0,10) : '';
+  document.getElementById('apikey-result').style.display = 'none';
+  document.getElementById('apikey-modal-title').textContent = 'Edit API Key';
+  document.getElementById('apikey-save-btn').textContent = 'Save Changes';
+  document.getElementById('apikey-save-btn').disabled = false;
+  const active = scopes.split(',').map(s => s.trim());
+  document.querySelectorAll('#scopes-checkboxes input[type=checkbox]').forEach(cb => {
+    cb.checked = active.includes(cb.value);
+  });
+  document.getElementById('apikey-modal').style.display = 'flex';
+}
+
+async function saveApiKey() {
+  const btn = document.getElementById('apikey-save-btn');
+  btn.disabled = true;
+  const id = document.getElementById('apikey-edit-id').value;
+  const name = document.getElementById('apikey-name').value.trim();
+  const expires = document.getElementById('apikey-expires').value;
+  const scopes = [...document.querySelectorAll('#scopes-checkboxes input[type=checkbox]:checked')].map(cb => cb.value);
+  if (!name) { toast('Name is required', 'error'); btn.disabled = false; return; }
+  if (!scopes.length) { toast('Select at least one scope', 'error'); btn.disabled = false; return; }
+  try {
+    const payload = { name, scopes, expiresAt: expires || null };
+    if (id) {
+      await api('PUT', '/api-keys/' + id, payload);
+      toast('API key updated', 'success');
+      closeModal('apikey-modal');
+      loadApiKeys();
+    } else {
+      const result = await api('POST', '/api-keys', payload);
+      // Show key — one time only
+      document.getElementById('apikey-value').textContent = result.key;
+      document.getElementById('apikey-result').style.display = 'block';
+      document.getElementById('apikey-save-btn').style.display = 'none';
+      toast('API key created — copy it now!', 'success');
+      loadApiKeys();
+    }
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
+
+function copyApiKey() {
+  const val = document.getElementById('apikey-value').textContent;
+  navigator.clipboard.writeText(val).then(() => toast('Key copied!', 'success'));
+}
+
+function deleteApiKey(id, name) {
+  confirm2('Revoke API Key', `Revoke "${name}"? Any integration using this key will stop working immediately.`, async () => {
+    try { await api('DELETE', '/api-keys/' + id); toast('API key revoked', 'success'); loadApiKeys(); }
+    catch (e) { toast(e.message, 'error'); }
+  });
 }
 
 // ============================================================

@@ -15,6 +15,7 @@ const settingsRoutes = require('./routes/settings.routes');
 const outboundWebhookRoutes = require('./routes/outbound-webhook.routes');
 const couponRoutes = require('./routes/coupon.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const apiKeysRoutes = require('./routes/api-keys.routes');
 
 const { startCleanupCron } = require('./jobs/renewal.job');
 const { log } = require('./utils/logger');
@@ -118,6 +119,7 @@ app.use('/api/paymob-plans', paymobPlansRoutes);
 app.use('/api/webhooks', outboundWebhookRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/api-keys', apiKeysRoutes);
 
 // ── SPA & Static routes ──────────────────────────────────────────────────────
 app.get('/subscribe/:slug', (req, res) => {
