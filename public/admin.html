@@ -1314,7 +1314,7 @@ async function saveProduct() {
 // ============================================================
 async function openProductPanel(id) {
   currentProductId = id;
-  const product = allProducts.find(p => (p._id || p.id) === id);
+  const product = allProducts.find(p => String(p._id || p.id) === String(id));
   currentProductSlug = product?.slug || '';
   document.getElementById('panel-product-name').textContent = product ? product.name : 'Product';
   document.getElementById('product-panel').style.display = 'flex';
