@@ -598,6 +598,24 @@ tr:hover td{background:#fafbfc}
     </div>
     <div class="tab-content" id="embed-tab">
       <p style="font-size:13px;color:#64748b;margin-bottom:20px">Embed the checkout on your website using one of these snippets.</p>
+
+      <!-- Product Info -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:20px">
+        <p style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Product Info</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:12px;color:#64748b;width:90px;flex-shrink:0">Product ID</span>
+            <code id="embed-product-id" style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:13px;font-family:monospace;color:#6366f1;font-weight:600">—</code>
+            <button class="btn btn-sm btn-secondary" style="flex-shrink:0" onclick="copyText('embed-product-id')">Copy</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:12px;color:#64748b;width:90px;flex-shrink:0">Product Slug</span>
+            <code id="embed-product-slug" style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:13px;font-family:monospace;color:#6366f1;font-weight:600">—</code>
+            <button class="btn btn-sm btn-secondary" style="flex-shrink:0" onclick="copyText('embed-product-slug')">Copy</button>
+          </div>
+        </div>
+      </div>
+
       <h4 style="font-size:13px;font-weight:600;margin-bottom:10px">iFrame Snippet</h4>
       <div class="code-block">
         <button class="copy-btn" onclick="copyCode('embed-iframe-pre')">Copy</button>
@@ -1301,6 +1319,9 @@ async function openProductPanel(id) {
   document.getElementById('panel-product-name').textContent = product ? product.name : 'Product';
   document.getElementById('product-panel').style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  // Fill product info in embed tab
+  document.getElementById('embed-product-id').textContent = id || '—';
+  document.getElementById('embed-product-slug').textContent = product?.slug || '—';
   // reset tabs
   document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === 0));
   document.querySelectorAll('.tab-content').forEach((t, i) => t.classList.toggle('active', i === 0));
@@ -1433,6 +1454,11 @@ async function loadEmbedCode() {
 function copyCode(preId) {
   const text = document.getElementById(preId).textContent;
   navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard!', 'success')).catch(() => toast('Copy failed', 'error'));
+}
+
+function copyText(elId) {
+  const text = document.getElementById(elId).textContent.trim();
+  navigator.clipboard.writeText(text).then(() => toast('Copied!', 'success')).catch(() => toast('Copy failed', 'error'));
 }
 
 function copyField(inputId) {
