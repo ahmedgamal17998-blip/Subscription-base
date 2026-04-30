@@ -206,6 +206,7 @@ model OutboundWebhook {
   // comma-separated event names:
   // payment_success | payment_failed | renewal_success | renewal_failed | cancelled | cancel_requested | expired
   events      String   @default("payment_success,payment_failed,cancelled")
+  secret      String   @default("")  // HMAC-SHA256 secret — auto-generated on create
   productId   Int?     // null = fires for all products
   product     Product? @relation(fields: [productId], references: [id])
   isActive    Boolean  @default(true)

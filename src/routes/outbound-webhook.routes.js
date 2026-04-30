@@ -3,10 +3,15 @@
  * Replaces the hardcoded GHL_WEBHOOK_URL with a DB-driven webhook list.
  */
 const express = require('express');
+const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const prisma = require('../db');
 const { requireAdmin } = require('../middleware/auth.middleware');
 const { log } = require('../utils/logger');
+
+function generateSecret() {
+  return crypto.randomBytes(32).toString('hex');
+}
 
 const router = express.Router();
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100 });
@@ -54,11 +59,14 @@ router.post('/', limiter, requireAdmin, async (req, res) => {
     const err = validateEvents(eventsArr);
     if (err) return res.status(400).json({ error: err });
 
+    const secret = generateSecret();
+
     const webhook = await prisma.outboundWebhook.create({
       data: {
         name: name.trim(),
         url,
         events: eventsArr.join(','),
+        secret,
         productId: productId ? parseInt(productId) : null,
         isActive: true,
       },
@@ -66,7 +74,8 @@ router.post('/', limiter, requireAdmin, async (req, res) => {
     });
 
     log('INFO', 'webhooks', 'Webhook created', { id: webhook.id, name: webhook.name });
-    return res.status(201).json(webhook);
+    // Return full secret once on creation
+    return res.status(201).json({ ...webhook, secret });
   } catch (err) {
     log('ERROR', 'webhooks', 'Failed to create webhook', { error: err.message });
     return res.status(500).json({ error: 'Failed to create webhook.' });
@@ -103,6 +112,37 @@ router.put('/:id', limiter, requireAdmin, async (req, res) => {
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Webhook not found.' });
     return res.status(500).json({ error: 'Failed to update webhook.' });
+  }
+});
+
+// ── POST /api/webhooks/:id/regenerate-secret ─────────────────────────────────
+router.post('/:id/regenerate-secret', limiter, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const secret = generateSecret();
+    const webhook = await prisma.outboundWebhook.update({
+      where: { id },
+      data: { secret },
+    });
+    log('INFO', 'webhooks', 'Secret regenerated', { id: webhook.id });
+    return res.json({ id: webhook.id, secret });
+  } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Webhook not found.' });
+    return res.status(500).json({ error: 'Failed to regenerate secret.' });
+  }
+});
+
+// ── GET /api/webhooks/:id/secret ──────────────────────────────────────────────
+router.get('/:id/secret', limiter, requireAdmin, async (req, res) => {
+  try {
+    const webhook = await prisma.outboundWebhook.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: { id: true, secret: true },
+    });
+    if (!webhook) return res.status(404).json({ error: 'Webhook not found.' });
+    return res.json({ id: webhook.id, secret: webhook.secret });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get secret.' });
   }
 });
 

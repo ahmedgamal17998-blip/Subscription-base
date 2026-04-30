@@ -1617,14 +1617,39 @@ async function loadWebhooks() {
     const data = await api('GET', '/webhooks');
     const list = Array.isArray(data) ? data : (data.webhooks || data.data || []);
     if (!list.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔗</div><p>No webhooks configured</p></div>'; return; }
-    wrap.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Name</th><th>URL</th><th>Events</th><th>Product</th><th>Active</th><th>Actions</th></tr></thead><tbody>' +
-      list.map(w => {
-        const id = w._id || w.id;
-        const wJson = escAttr(JSON.stringify(w));
-        const evArr = Array.isArray(w.events) ? w.events : (w.events || '').split(',').filter(Boolean);
-        const isActive = w.isActive !== undefined ? w.isActive : w.active !== false;
-        return '<tr><td><strong>' + escAttr(w.name) + '</strong></td><td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escAttr(w.url) + '">' + escAttr(w.url) + '</td><td>' + evArr.map(e => '<span class="badge badge-blue" style="margin:1px;font-size:11px">' + escAttr(e) + '</span>').join('') + '</td><td>' + escAttr(w.productName || w.productId || 'All') + '</td><td><label class="toggle"><input type="checkbox" ' + (isActive ? 'checked' : '') + ' onchange="toggleWebhook(\'' + id + '\',this.checked)"><span class="toggle-slider"></span></label></td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick=\'editWebhookById(' + wJson + ')\'>Edit</button><button class="btn btn-danger btn-sm" onclick="deleteWebhook(\'' + id + '\')">Delete</button></div></td></tr>';
-      }).join('') + '</tbody></table></div>';
+    wrap.innerHTML = list.map(w => {
+      const id = w._id || w.id;
+      const wJson = escAttr(JSON.stringify(w));
+      const evArr = Array.isArray(w.events) ? w.events : (w.events || '').split(',').filter(Boolean);
+      const isActive = w.isActive !== undefined ? w.isActive : w.active !== false;
+      const secretMasked = w.secret ? (w.secret.slice(0,8) + '••••••••••••••••••••••••') : '—';
+      return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:12px;background:#fff">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+              <strong style="font-size:14px">${escAttr(w.name)}</strong>
+              ${isActive ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>'}
+              <span style="font-size:12px;color:#64748b;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px" title="${escAttr(w.url)}">${escAttr(w.url)}</span>
+            </div>
+            <div style="margin-bottom:8px">${evArr.map(e => '<span class="badge badge-blue" style="margin:1px;font-size:11px">' + escAttr(e) + '</span>').join('')}</div>
+            <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px">
+              <span style="font-size:11px;color:#64748b;font-weight:500">🔐 Secret:</span>
+              <code id="secret-${id}" style="font-size:11px;font-family:monospace;color:#475569;flex:1">${secretMasked}</code>
+              <button class="btn btn-sm btn-secondary" style="padding:3px 8px;font-size:11px" onclick="showWebhookSecret(${id})">Show</button>
+              <button class="btn btn-sm btn-secondary" style="padding:3px 8px;font-size:11px" onclick="copyWebhookSecret(${id})">Copy</button>
+              <button class="btn btn-sm btn-danger" style="padding:3px 8px;font-size:11px" onclick="regenerateSecret(${id},'${escAttr(w.name)}')">Regenerate</button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+            <label class="toggle"><input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleWebhook('${id}',this.checked)"><span class="toggle-slider"></span></label>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm" onclick='editWebhookById(${wJson})'>Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteWebhook('${id}')">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
   } catch (e) { wrap.innerHTML = '<div class="loading-state" style="color:#ef4444">Error: ' + e.message + '</div>'; }
 }
 
@@ -1651,10 +1676,24 @@ async function saveWebhook() {
   const btn = document.getElementById('webhook-save-btn');
   btn.disabled = true;
   try {
-    if (editingWebhookId) { await api('PUT', '/webhooks/' + editingWebhookId, payload); toast('Webhook updated', 'success'); }
-    else { await api('POST', '/webhooks', payload); toast('Webhook created', 'success'); }
-    closeModal('webhook-modal');
-    loadWebhooks();
+    if (editingWebhookId) {
+      await api('PUT', '/webhooks/' + editingWebhookId, payload);
+      toast('Webhook updated', 'success');
+      closeModal('webhook-modal');
+      loadWebhooks();
+    } else {
+      const result = await api('POST', '/webhooks', payload);
+      closeModal('webhook-modal');
+      loadWebhooks();
+      // Show secret once after creation
+      if (result.secret) {
+        setTimeout(() => {
+          confirm2('🔐 Save your Webhook Secret', `Copy this secret and save it in your integration.\n\nIt won't be shown again after you close this dialog.\n\n${result.secret}`, () => {
+            navigator.clipboard.writeText(result.secret).then(() => toast('Secret copied!', 'success'));
+          }, 'Copy & Close', 'Close');
+        }, 400);
+      }
+    }
   } catch (e) { toast(e.message, 'error'); }
   btn.disabled = false;
 }
@@ -1668,6 +1707,34 @@ function deleteWebhook(id) {
   confirm2('Delete Webhook', 'Delete this webhook permanently?', async () => {
     try { await api('DELETE', '/webhooks/' + id); toast('Webhook deleted', 'success'); loadWebhooks(); }
     catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+async function showWebhookSecret(id) {
+  try {
+    const data = await api('GET', '/webhooks/' + id + '/secret');
+    const el = document.getElementById('secret-' + id);
+    if (el) el.textContent = data.secret;
+  } catch (e) { toast('Failed to load secret', 'error'); }
+}
+
+async function copyWebhookSecret(id) {
+  try {
+    const data = await api('GET', '/webhooks/' + id + '/secret');
+    await navigator.clipboard.writeText(data.secret);
+    toast('Secret copied!', 'success');
+  } catch (e) { toast('Failed to copy secret', 'error'); }
+}
+
+function regenerateSecret(id, name) {
+  confirm2('Regenerate Secret', `Regenerate secret for "${name}"?\n\nYour integration will stop working until you update it with the new secret.`, async () => {
+    try {
+      const data = await api('POST', '/webhooks/' + id + '/regenerate-secret');
+      const el = document.getElementById('secret-' + id);
+      if (el) el.textContent = data.secret;
+      await navigator.clipboard.writeText(data.secret);
+      toast('New secret generated & copied!', 'success');
+    } catch (e) { toast(e.message, 'error'); }
   });
 }
 
