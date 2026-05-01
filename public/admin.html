@@ -643,10 +643,10 @@ tr:hover td{background:#fafbfc}
         <div class="form-row">
           <div class="form-group"><label>Amount (EGP) *</label><input type="number" id="plf-amount" step="0.01" min="0" required></div>
           <div class="form-group"><label>Plan Type</label>
-            <select id="plf-type"><option value="recurring">Recurring</option><option value="one_time">One-Time</option></select>
+            <select id="plf-type" onchange="onPlanTypeChange(this.value)"><option value="recurring">Recurring</option><option value="one_time">One-Time</option></select>
           </div>
         </div>
-        <div class="form-row">
+        <div class="form-row" id="plf-interval-row">
           <div class="form-group"><label>Interval</label>
             <select id="plf-interval">
               <option value="monthly">Monthly</option>
@@ -657,6 +657,9 @@ tr:hover td{background:#fafbfc}
             </select>
           </div>
           <div class="form-group"><label>Badge (optional)</label><input type="text" id="plf-badge" placeholder="Popular"></div>
+        </div>
+        <div class="form-row" id="plf-onetime-row" style="display:none">
+          <div class="form-group"><label>Badge (optional)</label><input type="text" id="plf-badge-onetime" placeholder="Popular"></div>
         </div>
       </form>
     </div>
@@ -1382,8 +1385,17 @@ function deletePlan(planId) {
   });
 }
 
+function onPlanTypeChange(val) {
+  const isOneTime = val === 'one_time';
+  document.getElementById('plf-interval-row').style.display = isOneTime ? 'none' : '';
+  document.getElementById('plf-onetime-row').style.display = isOneTime ? '' : 'none';
+}
+
 function openAddPlanModal() {
   document.getElementById('plan-form').reset();
+  // Reset to recurring state
+  document.getElementById('plf-interval-row').style.display = '';
+  document.getElementById('plf-onetime-row').style.display = 'none';
   openModal('plan-modal');
 }
 
@@ -1392,9 +1404,30 @@ async function savePlan() {
   const amount = parseFloat(document.getElementById('plf-amount').value);
   if (!label || isNaN(amount)) { toast('Label and amount are required', 'error'); return; }
   try {
-    const planTypeVal = document.getElementById('plf-interval').value;
+    const selectedType = document.getElementById('plf-type').value;
+    const isOneTime = selectedType === 'one_time';
     const intervalLabelMap = { 'weekly': 'Weekly', 'monthly': 'Monthly', '3-months': '3 Months', '6-months': '6 Months', 'yearly': 'Yearly' };
-    await api('POST', '/products/' + currentProductId + '/plans', { label, amountCents: Math.round(amount * 100), planType: planTypeVal, intervalLabel: intervalLabelMap[planTypeVal] || planTypeVal, badge: document.getElementById('plf-badge').value.trim() || undefined });
+
+    let planTypeVal, intervalLabel;
+    if (isOneTime) {
+      planTypeVal = 'one_time';
+      intervalLabel = 'One-Time';
+    } else {
+      planTypeVal = document.getElementById('plf-interval').value;
+      intervalLabel = intervalLabelMap[planTypeVal] || planTypeVal;
+    }
+
+    const badge = isOneTime
+      ? document.getElementById('plf-badge-onetime').value.trim()
+      : document.getElementById('plf-badge').value.trim();
+
+    await api('POST', '/products/' + currentProductId + '/plans', {
+      label,
+      amountCents: Math.round(amount * 100),
+      planType: planTypeVal,
+      intervalLabel,
+      badge: badge || undefined,
+    });
     toast('Plan added', 'success');
     closeModal('plan-modal');
     loadPanelPlans();
