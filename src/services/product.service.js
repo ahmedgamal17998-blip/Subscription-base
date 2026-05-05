@@ -129,8 +129,34 @@ async function updateProduct(id, { name, description, isActive, walletEnabled, p
 async function addPlan(productId, { planType, amountCents, currency, label, intervalLabel, badge }) {
   const product = await prisma.product.findUnique({ where: { id: parseInt(productId) } });
   if (!product) throw new Error('Product not found');
-  const paymobPlanId = await createPaymobPlan(product.name, planType, amountCents);
 
+  // Check if a plan with the same planType already exists (active or inactive)
+  const existing = await prisma.productPlan.findUnique({
+    where: { productId_planType: { productId: parseInt(productId), planType } },
+  });
+
+  if (existing) {
+    if (existing.isActive) {
+      throw Object.assign(new Error('This plan type already exists for this product.'), { code: 'P2002' });
+    }
+    // Inactive plan exists → reactivate with new values + fresh Paymob plan
+    const paymobPlanId = await createPaymobPlan(product.name, planType, amountCents);
+    return prisma.productPlan.update({
+      where: { id: existing.id },
+      data: {
+        isActive: true,
+        amountCents,
+        currency: currency || 'EGP',
+        label,
+        intervalLabel,
+        badge: badge || null,
+        paymobSubscriptionPlanId: paymobPlanId ?? existing.paymobSubscriptionPlanId,
+      },
+    });
+  }
+
+  // No existing plan → create new
+  const paymobPlanId = await createPaymobPlan(product.name, planType, amountCents);
   return prisma.productPlan.create({
     data: {
       productId: parseInt(productId),
