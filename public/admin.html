@@ -631,6 +631,38 @@ tr:hover td{background:#fafbfc}
   </div>
 </div>
 
+<!-- EDIT PLAN MODAL -->
+<div class="modal-overlay" id="edit-plan-modal" style="display:none" onclick="closeModalOverlay(event,'edit-plan-modal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Edit Plan</h3>
+      <button class="modal-close" onclick="closeModal('edit-plan-modal')">×</button>
+    </div>
+    <div style="padding:20px">
+      <input type="hidden" id="epl-id">
+      <div class="form-group">
+        <label>Plan Label *</label>
+        <input type="text" id="epl-label" placeholder="e.g. Monthly Pro">
+      </div>
+      <div class="form-group">
+        <label>Amount (EGP) *</label>
+        <input type="number" id="epl-amount" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label>Badge <span style="font-size:11px;color:#94a3b8">(optional)</span></label>
+        <input type="text" id="epl-badge" placeholder="e.g. Popular, Best Value">
+      </div>
+      <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:16px">
+        <p style="font-size:12px;color:#92400e">⚠️ تغيير السعر يؤثر على المشتركين الجدد فقط — المشتركين الحاليين هيفضلوا على السعر القديم.</p>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closeModal('edit-plan-modal')">Cancel</button>
+        <button class="btn btn-primary" id="epl-save-btn" onclick="saveEditPlan()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ADD PLAN MODAL -->
 <div class="modal-overlay" id="plan-modal" style="display:none" onclick="closeModalOverlay(event,'plan-modal')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -1383,6 +1415,7 @@ async function loadPanelPlans() {
         </div>
         <div class="plan-price">${amountDisplay}</div>
         <div style="display:flex;gap:8px;margin-left:12px">
+          <button class="btn btn-secondary btn-sm" onclick='openEditPlanModal(${JSON.stringify({id:pid,label:pl.label,amountCents:pl.amountCents,badge:pl.badge||"",planType:pl.planType})})'>Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deletePlan('${pid}')">Delete</button>
         </div>
       </div>`;
@@ -1393,6 +1426,36 @@ async function loadPanelPlans() {
 async function togglePlan(planId, active) {
   try { await api('PUT', '/products/' + currentProductId + '/plans/' + planId, { active }); toast('Plan ' + (active ? 'activated' : 'deactivated'), 'success'); loadPanelPlans(); }
   catch (e) { toast(e.message, 'error'); }
+}
+
+function openEditPlanModal(plan) {
+  document.getElementById('epl-id').value = plan.id;
+  document.getElementById('epl-label').value = plan.label || '';
+  document.getElementById('epl-amount').value = plan.amountCents ? (plan.amountCents / 100).toFixed(2) : '';
+  document.getElementById('epl-badge').value = plan.badge || '';
+  document.getElementById('epl-save-btn').disabled = false;
+  document.getElementById('edit-plan-modal').style.display = 'flex';
+}
+
+async function saveEditPlan() {
+  const btn = document.getElementById('epl-save-btn');
+  const planId = document.getElementById('epl-id').value;
+  const label = document.getElementById('epl-label').value.trim();
+  const amount = parseFloat(document.getElementById('epl-amount').value);
+  const badge = document.getElementById('epl-badge').value.trim();
+  if (!label || isNaN(amount) || amount <= 0) { toast('Label and amount are required', 'error'); return; }
+  btn.disabled = true;
+  try {
+    await api('PUT', '/products/' + currentProductId + '/plans/' + planId, {
+      label,
+      amountCents: Math.round(amount * 100),
+      badge: badge || null,
+    });
+    toast('Plan updated ✅', 'success');
+    closeModal('edit-plan-modal');
+    loadPanelPlans();
+  } catch (e) { toast(e.message, 'error'); }
+  btn.disabled = false;
 }
 
 function deletePlan(planId) {
