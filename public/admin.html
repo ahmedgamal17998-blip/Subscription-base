@@ -1171,12 +1171,13 @@ async function loadSubscriptions(page) {
             '<td style="font-size:13px;color:#64748b">' + escAttr(s.phone || '—') + '</td>' +
             '<td>' + escAttr(s.planLabel || s.plan || '—') + '</td>' +
             '<td style="font-size:13px">' + escAttr(s.product?.name || s.productName || '—') + '</td>' +
-            '<td>' + statusBadge(s.status) + '</td>' +
+            '<td>' + (s.status === 'active' && s.cancelledAt ? '<span class="badge badge-orange">cancel pending</span>' : statusBadge(s.status)) + '</td>' +
             '<td>' + amountDisplay + '</td>' +
             '<td style="font-size:12px">' + fmtDate(s.nextRenewalDate || s.renewsAt) + '</td>' +
             '<td><div style="display:flex;gap:6px">' +
               '<button class="btn btn-secondary btn-sm" onclick="viewSubscription(\'' + id + '\')">View</button>' +
-              (s.status === 'active' ? '<button class="btn btn-danger btn-sm" onclick="cancelSub(\'' + id + '\')">Cancel</button>' : '') +
+              (s.status === 'active' && !s.cancelledAt ? '<button class="btn btn-danger btn-sm" onclick="cancelSub(\'' + id + '\')">Cancel</button>' : '') +
+              (s.status === 'active' && s.cancelledAt ? '<button class="btn btn-success btn-sm" onclick="reactivateSub(\'' + id + '\')">↩ Undo Cancel</button>' : '') +
               (s.status === 'cancelled' || s.status === 'expired' ? '<button class="btn btn-success btn-sm" onclick="reactivateSub(\'' + id + '\')">Reactivate</button>' : '') +
             '</div></td></tr>';
         }).join('') +
@@ -1212,15 +1213,15 @@ async function viewSubscription(id) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
         <div><div class="stat-label">Email</div><div style="font-size:14px;font-weight:500;margin-top:4px">${escAttr(s.email||s.customerEmail||'—')}</div></div>
         <div><div class="stat-label">Name</div><div style="font-size:14px;font-weight:500;margin-top:4px">${escAttr(s.name||s.customerName||'—')}</div></div>
-        <div><div class="stat-label">Status</div><div style="margin-top:4px">${statusBadge(s.status)}</div></div>
+        <div><div class="stat-label">Status</div><div style="margin-top:4px">${s.status === 'active' && s.cancelledAt ? '<span class="badge badge-orange">cancel pending</span>' : statusBadge(s.status)}</div></div>
         <div><div class="stat-label">Plan</div><div style="font-size:14px;font-weight:500;margin-top:4px">${escAttr(s.planLabel||s.plan||'—')}</div></div>
         <div><div class="stat-label">Amount</div><div style="font-size:14px;font-weight:500;margin-top:4px">${fmt(s.amountCents || 0)}</div></div>
         <div><div class="stat-label">Product</div><div style="font-size:14px;margin-top:4px">${escAttr(s.productName||'—')}</div></div>
         <div><div class="stat-label">Created</div><div style="font-size:14px;margin-top:4px">${fmtDate(s.createdAt)}</div></div>
         <div><div class="stat-label">Next Renewal</div><div style="font-size:14px;margin-top:4px">${fmtDate(s.nextRenewalDate||s.renewsAt)}</div></div>
-        ${s.cancelledAt ? '<div><div class="stat-label">Cancelled At</div><div style="font-size:14px;margin-top:4px">' + fmtDate(s.cancelledAt) + '</div></div>' : ''}
         ${s.couponCode ? '<div><div class="stat-label">Coupon</div><div style="font-size:14px;margin-top:4px">' + escAttr(s.couponCode) + '</div></div>' : ''}
       </div>
+      ${s.status === 'active' && s.cancelledAt ? `<div style="margin-top:16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px;font-size:13px;color:#92400e;display:flex;align-items:center;justify-content:space-between;gap:12px"><div>⚠️ Cancel requested on <strong>${fmtDate(s.cancelledAt)}</strong> — customer stays active until <strong>${fmtDate(s.nextRenewalDate||s.renewsAt)}</strong></div><button class="btn btn-success btn-sm" onclick="reactivateSub('${s.id||s._id}');closeModal('sub-detail-modal')">↩ Undo Cancel</button></div>` : ''}
     `;
   } catch (e) {
     body.innerHTML = '<div class="loading-state" style="color:#ef4444">Error: ' + e.message + '</div>';
