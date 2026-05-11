@@ -1229,14 +1229,14 @@ async function viewSubscription(id) {
 
 function cancelSub(id) {
   confirm2('Cancel Subscription', 'Cancel this subscription? The customer will lose access at the end of their billing period.', async () => {
-    try { await api('PUT', '/subscriptions/' + id + '/cancel'); toast('Subscription cancelled', 'success'); loadSubscriptions(); }
+    try { await api('POST', '/subscriptions/' + id + '/cancel'); toast('Subscription cancelled', 'success'); loadSubscriptions(); }
     catch (e) { toast(e.message, 'error'); }
   });
 }
 
 function reactivateSub(id) {
   confirm2('Reactivate Subscription', 'Reactivate this subscription?', async () => {
-    try { await api('PUT', '/subscriptions/' + id + '/reactivate'); toast('Subscription reactivated', 'success'); loadSubscriptions(); }
+    try { await api('POST', '/subscriptions/' + id + '/reactivate'); toast('Subscription reactivated', 'success'); loadSubscriptions(); }
     catch (e) { toast(e.message, 'error'); }
   });
 }
