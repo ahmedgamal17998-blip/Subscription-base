@@ -31,6 +31,12 @@ router.post('/paymob', verifyHmac, async (req, res) => {
     const sourceType = obj.source_data?.type || '';
     const paymentMethod = sourceType.toLowerCase() === 'wallet' ? 'wallet' : 'card';
 
+    // Skip pending (3DS in-progress) transactions — we'll receive the final one when captured
+    if (obj.pending === true) {
+      log('INFO', 'webhook', 'Skipping pending (3DS) transaction', { transactionId, orderId });
+      return res.status(200).json({ message: 'ok' });
+    }
+
     log('INFO', 'webhook', 'TRANSACTION event', { transactionId, orderId, success });
 
     // Idempotency check
@@ -67,6 +73,20 @@ router.post('/paymob', verifyHmac, async (req, res) => {
     }
 
     const type = sub.status === 'pending' ? 'initial' : 'renewal';
+
+    // Guard: skip spurious first-cycle charges from Paymob's subscription module.
+    // These arrive immediately after initial activation with a new orderId (email fallback).
+    // A legitimate renewal only fires AFTER the nextRenewalDate has been reached.
+    if (type === 'renewal') {
+      const renewalDate = sub.nextRenewalDate ? new Date(sub.nextRenewalDate) : null;
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      if (renewalDate && renewalDate > tomorrow) {
+        log('WARN', 'webhook', `Skipping premature renewal for sub #${sub.id} — nextRenewalDate not yet reached`, {
+          nextRenewalDate: renewalDate, orderId, transactionId,
+        });
+        return res.status(200).json({ message: 'ok' });
+      }
+    }
 
     if (type === 'renewal' && sub.status !== 'active') {
       log('WARN', 'webhook', `Ignoring renewal for non-active sub #${sub.id}`, { status: sub.status });
