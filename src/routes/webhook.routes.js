@@ -221,13 +221,25 @@ router.post('/paymob-subscription', async (req, res) => {
       if (!sub && subscription_data.client_info?.email) {
         const email = subscription_data.client_info.email;
         if (subscription_data.plan_id) {
+          // Search BOTH active AND pending — race condition: this webhook sometimes fires
+          // before the TRANSACTION webhook has activated the subscription.
           sub = await prisma.subscription.findFirst({
-            where: { email, status: 'active', paymobPlanId: subscription_data.plan_id },
+            where: {
+              email,
+              status: { in: ['active', 'pending'] },
+              paymobPlanId: String(subscription_data.plan_id),
+            },
+            orderBy: { createdAt: 'desc' },
             include: { product: true },
           });
         }
         if (!sub) {
-          sub = await subscriptionService.findActiveByEmail(email);
+          // Last resort: most recent active or pending by email
+          sub = await prisma.subscription.findFirst({
+            where: { email, status: { in: ['active', 'pending'] } },
+            orderBy: { createdAt: 'desc' },
+            include: { product: true },
+          });
           if (sub) log('WARN', 'sub-webhook', 'Found by email-only fallback', { email, subId: sub.id });
         }
       }

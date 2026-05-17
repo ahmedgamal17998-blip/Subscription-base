@@ -102,6 +102,19 @@ async function getSubscription(authToken, subscriptionId) {
   }
 }
 
+async function searchSubscriptionsByPlan(authToken, planId) {
+  try {
+    const res = await axios.get(`${BASE_URL}/acceptance/subscriptions`, {
+      params: { subscription_plan: planId, page_size: 50 },
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    return res.data.results || res.data || [];
+  } catch (err) {
+    log('WARN', 'paymob', 'searchSubscriptionsByPlan failed', { planId, error: err.message });
+    return [];
+  }
+}
+
 async function createSubscriptionPlan(authToken, { name, frequency, amountCents, integrationId, webhookUrl }) {
   try {
     const res = await axios.post(
@@ -137,5 +150,6 @@ module.exports = {
   getUnifiedCheckoutUrl,
   suspendSubscription,
   getSubscription,
+  searchSubscriptionsByPlan,
   createSubscriptionPlan,
 };

@@ -61,16 +61,51 @@ router.post('/:id/cancel', requireAuthOrApiKey('subscriptions:write'), async (re
       return res.status(400).json({ error: 'Invalid subscription ID' });
     }
     const result = await subscriptionService.cancelSubscription(subscriptionId);
-    // Suspend on Paymob if linked
+
+    // ── Suspend on Paymob ────────────────────────────────────────────────────
+    const paymobService = require('../services/paymob.service');
     if (result.subscription.paymobSubscriptionId) {
+      // Happy path: Paymob subscription ID is known — suspend directly
       try {
-        const paymobService = require('../services/paymob.service');
         const authToken = await paymobService.authenticate();
         await paymobService.suspendSubscription(authToken, result.subscription.paymobSubscriptionId);
         log('INFO', 'subscriptions', `Paymob subscription ${result.subscription.paymobSubscriptionId} suspended`);
       } catch (paymobErr) {
         log('WARN', 'subscriptions', 'Failed to suspend Paymob subscription', { error: paymobErr.message });
       }
+    } else if (result.subscription.paymobPlanId) {
+      // Fallback: paymobSubscriptionId not linked (race condition on initial webhook).
+      // Search Paymob for the subscription instance by plan + email, then suspend.
+      try {
+        const authToken = await paymobService.authenticate();
+        const paymobSubs = await paymobService.searchSubscriptionsByPlan(authToken, result.subscription.paymobPlanId);
+        const email = result.subscription.email;
+        const match = paymobSubs.find(s =>
+          s.client_info?.email === email ||
+          s.billing_data?.email === email ||
+          s.customer?.email === email
+        );
+        if (match) {
+          await paymobService.suspendSubscription(authToken, match.id);
+          // Save the ID so future operations work directly
+          await subscriptionService.updatePaymobSubscription(subscriptionId, { paymobSubscriptionId: match.id });
+          log('INFO', 'subscriptions', `Paymob subscription found via plan search and suspended`, {
+            paymobSubId: match.id, subscriptionId,
+          });
+        } else {
+          log('WARN', 'subscriptions',
+            '⚠️ MANUAL ACTION REQUIRED — Paymob subscription not found via plan search. Suspend manually on Paymob dashboard.',
+            { subscriptionId, email, paymobPlanId: result.subscription.paymobPlanId }
+          );
+        }
+      } catch (paymobErr) {
+        log('WARN', 'subscriptions', 'Failed to find/suspend Paymob subscription via plan fallback', { error: paymobErr.message });
+      }
+    } else {
+      log('WARN', 'subscriptions',
+        '⚠️ MANUAL ACTION REQUIRED — No Paymob subscription ID linked. Suspend manually on Paymob dashboard.',
+        { subscriptionId, email: result.subscription.email }
+      );
     }
     await ghlService.notifyCancelRequested({
       subscriptionId,
