@@ -1178,7 +1178,7 @@ async function loadSubscriptions(page) {
               '<button class="btn btn-secondary btn-sm" onclick="viewSubscription(\'' + id + '\')">View</button>' +
               (s.status === 'active' && !s.cancelledAt ? '<button class="btn btn-danger btn-sm" onclick="cancelSub(\'' + id + '\')">Cancel</button>' : '') +
               (s.status === 'active' && s.cancelledAt ? '<button class="btn btn-success btn-sm" onclick="reactivateSub(\'' + id + '\')">↩ Undo Cancel</button>' : '') +
-              (s.status === 'cancelled' || s.status === 'expired' ? '<button class="btn btn-success btn-sm" onclick="reactivateSub(\'' + id + '\')">Reactivate</button>' : '') +
+              (s.status === 'cancelled' ? '<button class="btn btn-secondary btn-sm" style="color:#f59e0b;border-color:#f59e0b" title="Force suspend on Paymob (use if Paymob is still charging)" onclick="forcePaymobSuspend(\'' + id + '\')">⏹ Sync Paymob</button>' : '') +
             '</div></td></tr>';
         }).join('') +
         '</tbody></table></div>';
@@ -1239,6 +1239,15 @@ function reactivateSub(id) {
   confirm2('Reactivate Subscription', 'Reactivate this subscription?', async () => {
     try { await api('POST', '/subscriptions/' + id + '/reactivate'); toast('Subscription reactivated', 'success'); loadSubscriptions(); }
     catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+function forcePaymobSuspend(id) {
+  confirm2('Sync Cancel to Paymob', 'This will suspend the Paymob auto-renewal for this subscription so they stop being charged. Continue?', async () => {
+    try {
+      const r = await api('POST', '/subscriptions/' + id + '/paymob-suspend');
+      toast(r.message || 'Paymob subscription suspended ✅', 'success');
+    } catch (e) { toast('Failed: ' + e.message, 'error'); }
   });
 }
 
