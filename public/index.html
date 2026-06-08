@@ -879,21 +879,23 @@
     }
 
     // Apply product settings (colors, logo, head code, etc.)
+    // Always called — even with null settings — to guarantee CSS vars are never left as invalid var() stubs
     function applySettings(settings) {
+      // Always resolve colors: use product setting if provided, else safe defaults
+      const primary = (settings && settings.primaryColor) ? settings.primaryColor : '#6366f1';
+      const accent  = (settings && settings.accentColor)  ? settings.accentColor  : '#7c3aed';
+
+      document.documentElement.style.setProperty('--primary', primary);
+      const ph = primary.replace('#','');
+      document.documentElement.style.setProperty('--primary-rgb',
+        `${parseInt(ph.substr(0,2),16)},${parseInt(ph.substr(2,2),16)},${parseInt(ph.substr(4,2),16)}`);
+
+      document.documentElement.style.setProperty('--accent', accent);
+      const ah = accent.replace('#','');
+      document.documentElement.style.setProperty('--accent-rgb',
+        `${parseInt(ah.substr(0,2),16)},${parseInt(ah.substr(2,2),16)},${parseInt(ah.substr(4,2),16)}`);
+
       if (!settings) return;
-      if (settings.primaryColor) {
-        document.documentElement.style.setProperty('--primary', settings.primaryColor);
-        // Extract RGB for radial gradients
-        const hex = settings.primaryColor.replace('#','');
-        const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
-        document.documentElement.style.setProperty('--primary-rgb', `${r},${g},${b}`);
-      }
-      if (settings.accentColor) {
-        document.documentElement.style.setProperty('--accent', settings.accentColor);
-        const hex = settings.accentColor.replace('#','');
-        const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
-        document.documentElement.style.setProperty('--accent-rgb', `${r},${g},${b}`);
-      }
       if (settings.logoUrl) {
         const icon = document.querySelector('.header-icon');
         if (icon) {
@@ -1012,9 +1014,8 @@
         }
 
         // Apply product settings (colors, logo, head code, coupons)
-        if (data.settings) {
-          applySettings(data.settings);
-        }
+        // Always call — applySettings handles null by applying safe color defaults
+        applySettings(data.settings);
 
         // Update page title and header
         if (data.product) {
