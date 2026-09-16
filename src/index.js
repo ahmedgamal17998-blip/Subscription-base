@@ -16,6 +16,7 @@ const outboundWebhookRoutes = require('./routes/outbound-webhook.routes');
 const couponRoutes = require('./routes/coupon.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
 const apiKeysRoutes = require('./routes/api-keys.routes');
+const ssoRoutes = require('./routes/sso.routes');
 
 const { startCleanupCron } = require('./jobs/renewal.job');
 const { log } = require('./utils/logger');
@@ -120,6 +121,7 @@ app.use('/api/webhooks', outboundWebhookRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/api-keys', apiKeysRoutes);
+app.use('/api/sso', ssoRoutes);
 
 // ── SPA & Static routes ──────────────────────────────────────────────────────
 app.get('/subscribe/:slug', (req, res) => {

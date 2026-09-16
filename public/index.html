@@ -866,6 +866,21 @@
       document.title = 'Subscription Portal';
     } else {
       document.getElementById('subscribePage').style.display = '';
+      // SSO pre-fill: verify identity token server-side and lock fields
+      (function() {
+        var ssoToken = new URLSearchParams(window.location.search).get('sso');
+        if (!ssoToken) return;
+        fetch('/api/sso/verify?token=' + encodeURIComponent(ssoToken))
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (!d.ok) return;
+            ['name','email','phone'].forEach(function(fid) {
+              var el = document.getElementById(fid);
+              if (el && d[fid]) { el.value = d[fid]; el.readOnly = true; el.style.backgroundColor = '#f0f0f0'; }
+            });
+          })
+          .catch(function() {});
+      })();
     }
 
     var appliedCouponCode = null;
