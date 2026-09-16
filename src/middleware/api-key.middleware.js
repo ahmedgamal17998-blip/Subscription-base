@@ -16,7 +16,7 @@ const config = require('../config');
 const { log } = require('../utils/logger');
 
 // ── Verify API key only ───────────────────────────────────────────────────────
-async function requireApiKey(scope) {
+function requireApiKey(scope) {
   return async (req, res, next) => {
     const rawKey = req.headers['x-api-key'];
     if (!rawKey) {
@@ -44,6 +44,10 @@ function requireAuthOrApiKey(scope) {
       const token = authHeader.slice(7);
       try {
         const payload = jwt.verify(token, config.JWT_SECRET);
+        // Dashboard users: viewers are read-only
+        if (scope && scope.endsWith(':write') && !['admin', 'support'].includes(payload.role)) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
         req.user = payload;
         return next();
       } catch {

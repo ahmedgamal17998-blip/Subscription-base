@@ -4,7 +4,8 @@ const rateLimit = require('express-rate-limit');
 const { verifyHmac } = require('../middleware/hmac.middleware');
 const prisma = require('../db');
 const subscriptionService = require('../services/subscription.service');
-const { dispatch } = require('../services/webhook-dispatch.service');
+const { dispatchForSubscription } = require('../services/webhook-dispatch.service');
+const couponService = require('../services/coupon.service');
 const config = require('../config');
 const { log } = require('../utils/logger');
 
@@ -39,26 +40,24 @@ router.post('/paymob', verifyHmac, async (req, res) => {
 
     log('INFO', 'webhook', 'TRANSACTION event', { transactionId, orderId, success });
 
-    // Idempotency check
-    const existing = await subscriptionService.findPaymentByTransactionId(transactionId);
-    if (existing) {
-      log('INFO', 'webhook', 'Already processed', { transactionId });
-      return res.status(200).json({ message: 'Already processed' });
-    }
-
-    // Find subscription
+    // Find subscription — by order first (initial checkout), then by email (Paymob renewals use new orders)
     let sub = await subscriptionService.findByPaymobOrder(orderId);
+    const matchedByOrder = !!sub;
 
     if (!sub) {
-      const email = obj.order?.shipping_data?.email;
+      const email = obj.order?.shipping_data?.email?.toLowerCase();
       if (email) {
         sub = await subscriptionService.findActiveByEmailAndAmount(email, amountCents);
-        if (sub) {
-          log('INFO', 'webhook', 'Found by email+amount fallback', { orderId, email, subId: sub.id });
-        } else {
-          sub = await subscriptionService.findActiveByEmail(email);
-          if (sub) {
+        if (!sub) {
+          // Only fall back to email alone when it is unambiguous — never guess between products
+          const actives = await subscriptionService.findAllActiveByEmail(email);
+          if (actives.length === 1) {
+            sub = actives[0];
             log('WARN', 'webhook', 'Found by email-only fallback — verify manually', { orderId, email, subId: sub.id });
+          } else if (actives.length > 1) {
+            log('ERROR', 'webhook', 'Ambiguous renewal — several active subscriptions for this email', {
+              orderId, transactionId, email, amountCents, subIds: actives.map((a) => a.id),
+            });
           }
         }
       }
@@ -72,108 +71,78 @@ router.post('/paymob', verifyHmac, async (req, res) => {
       return res.status(200).json({ message: 'ok' });
     }
 
-    const type = sub.status === 'pending' ? 'initial' : 'renewal';
+    // An unpaid attempt that was superseded or expired is still the customer's checkout for this order
+    const isInitial = sub.status === 'pending' || (matchedByOrder && sub.status === 'abandoned');
+    const type = isInitial ? 'initial' : 'renewal';
+    const base = { subscriptionId: sub.id, paymobOrderId: orderId, transactionId, amountCents, type };
 
-    // Guard: skip spurious first-cycle charges from Paymob's subscription module.
-    // These arrive immediately after initial activation with a new orderId (email fallback).
-    // A legitimate renewal only fires AFTER the nextRenewalDate has been reached.
     if (type === 'renewal') {
+      let ignoreReason = null;
+      let needsRefund = false;
       const renewalDate = sub.nextRenewalDate ? new Date(sub.nextRenewalDate) : null;
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      if (renewalDate && renewalDate > tomorrow) {
-        log('WARN', 'webhook', `Skipping premature renewal for sub #${sub.id} — nextRenewalDate not yet reached`, {
-          nextRenewalDate: renewalDate, orderId, transactionId,
+
+      if (sub.status !== 'active') {
+        ignoreReason = `Ignored: subscription status is ${sub.status}`;
+      } else if (sub.cancelledAt) {
+        ignoreReason = 'Ignored: subscription is pending cancellation';
+      } else if (renewalDate && renewalDate > tomorrow) {
+        // Charge before the period ended (e.g. Paymob's immediate first-cycle deduction on
+        // subscriptions created without a start date). The customer paid twice.
+        ignoreReason = 'Early charge before renewal date — refund in Paymob';
+        needsRefund = success;
+      }
+
+      if (ignoreReason) {
+        const claimed = await subscriptionService.claimPayment({
+          ...base,
+          status: needsRefund ? 'needs_refund' : (success ? 'success' : 'failed'),
+          failReason: ignoreReason,
         });
+        if (claimed) {
+          log(needsRefund ? 'ERROR' : 'WARN', 'webhook', `${ignoreReason} — sub #${sub.id}`, {
+            orderId, transactionId, amountCents, success, nextRenewalDate: renewalDate,
+          });
+        }
         return res.status(200).json({ message: 'ok' });
       }
     }
 
-    if (type === 'renewal' && sub.status !== 'active') {
-      log('WARN', 'webhook', `Ignoring renewal for non-active sub #${sub.id}`, { status: sub.status });
-      await subscriptionService.logPayment({
-        subscriptionId: sub.id, paymobOrderId: orderId, transactionId,
-        amountCents, status: success ? 'success' : 'failed', type: 'renewal',
-        failReason: `Ignored: subscription status is ${sub.status}`,
-      });
-      return res.status(200).json({ message: 'ok' });
-    }
-
-    if (type === 'renewal' && sub.cancelledAt) {
-      log('WARN', 'webhook', `Ignoring renewal for cancelled sub #${sub.id}`);
-      await subscriptionService.logPayment({
-        subscriptionId: sub.id, paymobOrderId: orderId, transactionId,
-        amountCents, status: success ? 'success' : 'failed', type: 'renewal',
-        failReason: 'Ignored: subscription is pending cancellation',
-      });
-      return res.status(200).json({ message: 'ok' });
+    // Record first; if another delivery of this webhook already did, stop here (no duplicate events)
+    const claimed = await subscriptionService.claimPayment({
+      ...base,
+      status: success ? 'success' : 'failed',
+      failReason: success ? null : failReason,
+    });
+    if (!claimed) {
+      log('INFO', 'webhook', 'Already processed', { transactionId });
+      return res.status(200).json({ message: 'Already processed' });
     }
 
     if (success) {
       if (type === 'initial') {
         await subscriptionService.activateSubscription(sub.id, transactionId, paymentMethod);
+        await couponService.recordUse(sub.couponCode);
       } else {
         await subscriptionService.renewSuccess(sub.id, orderId, transactionId, sub.plan);
       }
-
-      await subscriptionService.logPayment({
-        subscriptionId: sub.id, paymobOrderId: orderId, transactionId,
-        amountCents, status: 'success', type,
-      });
-
-      const updatedSub = await subscriptionService.getSubscriptionById(sub.id);
-      const eventName = type === 'renewal' ? 'renewal_success' : 'payment_success';
-
-      await dispatch(eventName, {
-        type,
-        full_name: `${updatedSub.firstName} ${updatedSub.lastName}`,
-        email: updatedSub.email,
-        phone: updatedSub.phone,
-        plan: updatedSub.plan,
-        product_name: updatedSub.product?.name || '',
-        product_id: updatedSub.product?.id ? String(updatedSub.product.id) : '',
-        payment_status: 'success',
-        payment_method: paymentMethod || 'card',
-        amount: amountCents / 100,
-        currency: updatedSub.currency,
-        date_of_creation: updatedSub.createdAt,
-        next_renewal: updatedSub.nextRenewalDate,
-        transaction_id: String(transactionId),
-        subscription_id: updatedSub.id,
-        coupon_code: updatedSub.couponCode || null,
-        discount_cents: updatedSub.discountCents || 0,
-      }, updatedSub.productId);
-
-      log('INFO', 'webhook', `Payment ${type} — SUCCESS #${sub.id} (${paymentMethod})`);
-    } else {
-      await subscriptionService.logPayment({
-        subscriptionId: sub.id, paymobOrderId: orderId, transactionId,
-        amountCents, status: 'failed', type, failReason,
-      });
-
-      const failedSub = await subscriptionService.getSubscriptionById(sub.id);
-      const eventName = type === 'renewal' ? 'renewal_failed' : 'payment_failed';
-
-      await dispatch(eventName, {
-        type,
-        full_name: `${failedSub.firstName} ${failedSub.lastName}`,
-        email: failedSub.email,
-        phone: failedSub.phone,
-        plan: failedSub.plan,
-        product_name: failedSub.product?.name || '',
-        product_id: failedSub.product?.id ? String(failedSub.product.id) : '',
-        payment_status: 'failed',
-        payment_method: paymentMethod || 'card',
-        amount: amountCents / 100,
-        currency: failedSub.currency || 'EGP',
-        fail_reason: failReason || '',
-        date_of_creation: failedSub.createdAt,
-        next_renewal: failedSub.nextRenewalDate,
-        transaction_id: String(transactionId),
-        subscription_id: failedSub.id,
-      }, failedSub.productId);
-
-      log('WARN', 'webhook', `Payment ${type} — FAILED #${sub.id}`, { failReason });
     }
+
+    const updatedSub = await subscriptionService.getSubscriptionById(sub.id);
+    const eventName = `${type === 'renewal' ? 'renewal' : 'payment'}_${success ? 'success' : 'failed'}`;
+    await dispatchForSubscription(eventName, updatedSub, {
+      type,
+      payment_status: success ? 'success' : 'failed',
+      payment_method: paymentMethod,
+      amount: amountCents / 100,
+      transaction_id: transactionId,
+      ...(success
+        ? { coupon_code: updatedSub.couponCode || null, discount_cents: updatedSub.discountCents || 0 }
+        : { fail_reason: failReason || '' }),
+    });
+
+    if (success) log('INFO', 'webhook', `Payment ${type} — SUCCESS #${sub.id} (${paymentMethod})`);
+    else log('WARN', 'webhook', `Payment ${type} — FAILED #${sub.id}`, { failReason });
 
     return res.status(200).json({ message: 'ok' });
   } catch (err) {
@@ -245,29 +214,29 @@ router.post('/paymob-subscription', async (req, res) => {
       }
 
       if (sub) {
+        // First automatic deduction: starts_at when it is in the future (we send a start date),
+        // otherwise next_billing (older subscriptions that started on the checkout day).
+        const startsAt = subscription_data.starts_at ? new Date(subscription_data.starts_at) : null;
+        const firstDeduction = startsAt && startsAt > new Date()
+          ? startsAt
+          : (subscription_data.next_billing ? new Date(subscription_data.next_billing) : null);
         await subscriptionService.updatePaymobSubscription(sub.id, {
           paymobSubscriptionId: subscription_data.id,
-          nextRenewalDate: subscription_data.next_billing ? new Date(subscription_data.next_billing) : undefined,
+          nextRenewalDate: firstDeduction || undefined,
         });
         log('INFO', 'sub-webhook', `Subscription #${sub.id} linked to Paymob sub ${subscription_data.id}`);
       }
     } else if (trigger_type === 'suspended') {
       const sub = await subscriptionService.findByPaymobSubscriptionId(subscription_data.id);
-      if (sub) {
+      if (!sub || sub.status !== 'active') {
+        // Unknown, or already finalized locally — nothing to do
+      } else if (sub.cancelledAt && sub.nextRenewalDate > new Date()) {
+        // We suspended it ourselves on cancel. The customer keeps access until the paid period
+        // ends; the daily cron finalizes it and sends the `cancelled` event then.
+        log('INFO', 'sub-webhook', `Subscription #${sub.id} suspended on Paymob; active until period end`);
+      } else {
         await subscriptionService.markCancelled(sub.id);
-        await dispatch('cancelled', {
-          type: 'cancelled',
-          full_name: `${sub.firstName} ${sub.lastName}`,
-          email: sub.email, phone: sub.phone, plan: sub.plan,
-          product_name: sub.product?.name || '',
-          product_id: sub.product?.id ? String(sub.product.id) : '',
-          payment_status: 'cancelled',
-          amount: (sub.amountCents || 0) / 100,
-          currency: sub.currency || 'EGP',
-          date_of_creation: sub.createdAt,
-          next_renewal: sub.nextRenewalDate,
-          subscription_id: sub.id,
-        }, sub.productId);
+        await dispatchForSubscription('cancelled', sub, { type: 'cancelled', payment_status: 'cancelled' });
         log('INFO', 'sub-webhook', `Subscription #${sub.id} suspended`);
       }
     } else if (trigger_type === 'resumed') {

@@ -124,7 +124,8 @@ router.put('/:id/plans/:planId', adminLimiter, requireAdmin, async (req, res) =>
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Plan not found' });
     log('ERROR', 'products', 'Failed to update plan', { error: err.message });
-    return res.status(500).json({ error: 'Failed to update plan.' });
+    const paymobFailure = err.message.startsWith('Failed to create the Paymob plan');
+    return res.status(paymobFailure ? 502 : 500).json({ error: paymobFailure ? err.message : 'Failed to update plan.' });
   }
 });
 

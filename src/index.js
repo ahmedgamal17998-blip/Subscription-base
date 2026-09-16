@@ -85,7 +85,7 @@ const embedOrigins = config.EMBED_ORIGINS === '*' ? '*' : config.EMBED_ORIGINS.s
 app.use(cors({
   origin: embedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
 }));
 
 // Allow checkout pages to be embedded in iframes from any domain

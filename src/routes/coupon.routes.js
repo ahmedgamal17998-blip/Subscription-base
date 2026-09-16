@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const prisma = require('../db');
 const { requireAdmin } = require('../middleware/auth.middleware');
 const { log } = require('../utils/logger');
+const { evaluateCoupon, finalAmountAfterDiscount } = require('../services/coupon.service');
 
 const router = express.Router();
 
@@ -18,36 +19,10 @@ router.post('/validate', publicLimiter, async (req, res) => {
     const { code, productId, amountCents } = req.body;
     if (!code || !amountCents) return res.status(400).json({ error: 'code and amountCents are required.' });
 
-    const coupon = await prisma.coupon.findUnique({ where: { code: code.trim().toUpperCase() } });
-
-    if (!coupon || !coupon.isActive) {
-      return res.status(404).json({ error: 'Invalid or inactive coupon code.' });
-    }
-
-    // Check product restriction
-    if (coupon.productId && productId && coupon.productId !== parseInt(productId)) {
-      return res.status(400).json({ error: 'This coupon is not valid for this product.' });
-    }
-
-    // Check expiry
-    if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
-      return res.status(400).json({ error: 'This coupon has expired.' });
-    }
-
-    // Check usage limit
-    if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
-      return res.status(400).json({ error: 'This coupon has reached its usage limit.' });
-    }
-
-    // Calculate discount
-    let discountCents = 0;
-    if (coupon.discountType === 'percentage') {
-      discountCents = Math.round((amountCents * coupon.discountValue) / 100);
-    } else {
-      discountCents = Math.round(coupon.discountValue);
-    }
-
-    const finalAmount = Math.max(0, amountCents - discountCents);
+    const result = await evaluateCoupon(code, productId, amountCents);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    const { coupon, discountCents } = result;
+    const finalAmount = finalAmountAfterDiscount(amountCents, discountCents);
 
     return res.json({
       valid: true,

@@ -3,7 +3,7 @@ const paymobService = require('./paymob.service');
 const config = require('../config');
 const { log } = require('../utils/logger');
 
-const PLAN_FREQUENCY_DAYS = { weekly: 7, monthly: 30, '3-months': 90, '6-months': 180, yearly: 365 };
+const { PLAN_DAYS } = require('../utils/plans');
 
 function slugify(name) {
   return name
@@ -30,7 +30,7 @@ async function createPaymobPlan(productName, planType, amountCents) {
     const authToken = await paymobService.authenticate();
     const integrationId = config.PAYMOB_MOTO_INTEGRATION_ID || config.PAYMOB_INTEGRATION_ID;
     const webhookUrl = config.APP_URL ? `${config.APP_URL}/api/webhook/paymob-subscription` : '';
-    const frequency = PLAN_FREQUENCY_DAYS[planType];
+    const frequency = PLAN_DAYS[planType];
     if (!frequency) return null;
 
     const result = await paymobService.createSubscriptionPlan(authToken, {
@@ -111,10 +111,8 @@ async function getProductBySlug(slug) {
 
 async function updateProduct(id, { name, description, isActive, walletEnabled, productType }) {
   const data = {};
-  if (name !== undefined) {
-    data.name = name;
-    data.slug = await ensureUniqueSlug(slugify(name), parseInt(id));
-  }
+  // Slug is fixed at creation: renaming must not break checkout links, embeds or integrations
+  if (name !== undefined) data.name = name;
   if (description !== undefined) data.description = description;
   if (isActive !== undefined) data.isActive = isActive;
   if (walletEnabled !== undefined) data.walletEnabled = walletEnabled;
@@ -173,7 +171,19 @@ async function addPlan(productId, { planType, amountCents, currency, label, inte
 
 async function updatePlan(planId, data) {
   const updateData = {};
-  if (data.amountCents !== undefined) updateData.amountCents = data.amountCents;
+  if (data.amountCents !== undefined) {
+    const plan = await prisma.productPlan.findUnique({ where: { id: parseInt(planId) }, include: { product: true } });
+    if (!plan) throw Object.assign(new Error('Plan not found'), { code: 'P2025' });
+    data.amountCents = parseInt(data.amountCents);
+    updateData.amountCents = data.amountCents;
+    // Paymob charges renewals from its own plan amount — a new price needs a new Paymob plan.
+    // Existing subscribers stay on their old plan/price.
+    if (data.amountCents !== plan.amountCents && plan.product.productType !== 'one_time') {
+      const paymobPlanId = await createPaymobPlan(plan.product.name, plan.planType, data.amountCents);
+      if (!paymobPlanId) throw new Error('Failed to create the Paymob plan for the new price. Price was not changed.');
+      updateData.paymobSubscriptionPlanId = paymobPlanId;
+    }
+  }
   if (data.currency !== undefined) updateData.currency = data.currency;
   if (data.label !== undefined) updateData.label = data.label;
   if (data.intervalLabel !== undefined) updateData.intervalLabel = data.intervalLabel;

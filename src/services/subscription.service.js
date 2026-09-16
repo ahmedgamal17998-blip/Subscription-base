@@ -1,4 +1,5 @@
 const prisma = require('../db');
+const { planDays, midnightUTCAfter } = require('../utils/plans');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -7,13 +8,6 @@ function splitName(fullName) {
   const firstName = parts[0];
   const lastName = parts.slice(1).join(' ') || 'NA';
   return { firstName, lastName };
-}
-
-function nextMidnightUTC(daysFromNow) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + daysFromNow);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
 }
 
 // ── Core functions ───────────────────────────────────────────────────────────
@@ -31,17 +25,22 @@ async function findActiveByEmailAndAmount(email, amountCents) {
   });
 }
 
-async function findPendingByEmail(email, productId) {
-  const where = { email, status: 'pending' };
-  if (productId !== undefined) where.productId = productId;
-  return prisma.subscription.findFirst({ where });
+// All active subscriptions for an email (used to avoid guessing when several exist).
+async function findAllActiveByEmail(email) {
+  return prisma.subscription.findMany({ where: { email, status: 'active' }, include: { product: true } });
+}
+
+async function abandonPendingByEmail(email, productId) {
+  return prisma.subscription.updateMany({
+    where: { email, status: 'pending', productId: productId ?? null },
+    data: { status: 'abandoned' },
+  });
 }
 
 async function createPending({ name, email, phone, plan, amountCents, currency, lastPaymobOrder, paymobPlanId, productId, paymentMethod, couponCode, discountCents, isOneTime }) {
   const { firstName, lastName } = splitName(name);
-  const planDays = { weekly: 7, monthly: 30, '3-months': 90, '6-months': 180, yearly: 365 };
   // One-time payments use a short window (1 day) just for record keeping
-  const nextRenewalDate = isOneTime ? nextMidnightUTC(1) : nextMidnightUTC(planDays[plan] ?? 30);
+  const nextRenewalDate = midnightUTCAfter(isOneTime ? 1 : planDays(plan));
   return prisma.subscription.create({
     data: {
       email, firstName, lastName, phone, plan,
@@ -78,36 +77,35 @@ async function logPayment({ subscriptionId, paymobOrderId, transactionId, amount
   });
 }
 
+/**
+ * Record a transaction exactly once. Returns false if another request already recorded it
+ * (Paymob retries webhooks, sometimes concurrently) — the caller must then stop.
+ */
+async function claimPayment({ subscriptionId, paymobOrderId, transactionId, amountCents, status, type, failReason }) {
+  try {
+    await prisma.payment.create({
+      data: { subscriptionId, paymobOrderId, transactionId: String(transactionId), amountCents, status, type, failReason },
+    });
+    return true;
+  } catch (err) {
+    if (err.code === 'P2002') return false;
+    throw err;
+  }
+}
+
 async function findPaymentByTransactionId(transactionId) {
   return prisma.payment.findUnique({ where: { transactionId: String(transactionId) } });
 }
 
-async function updatePaymentStatus(transactionId, status, failReason) {
-  return prisma.payment.update({
-    where: { transactionId: String(transactionId) },
-    data: { status, ...(failReason ? { failReason } : {}) },
-  });
-}
-
-async function updateLastTransaction(subscriptionId, orderId, transactionId) {
-  return prisma.subscription.update({
-    where: { id: subscriptionId },
-    data: { lastPaymobOrder: String(orderId), lastTransactionId: String(transactionId) },
-  });
-}
-
 async function renewSuccess(subscriptionId, orderId, transactionId, plan) {
-  const planDays = { weekly: 7, monthly: 30, '3-months': 90, '6-months': 180, yearly: 365 };
-  const days = planDays[plan] ?? 30;
+  const days = planDays(plan);
 
   // Advance from the current nextRenewalDate, not from today, to prevent drift.
   // If the current renewal date is in the past (late charge), still advance from it.
   const sub = await prisma.subscription.findUnique({ where: { id: subscriptionId } });
   const baseDate = sub.nextRenewalDate && sub.nextRenewalDate <= new Date()
-    ? new Date(sub.nextRenewalDate)
-    : new Date();
-  baseDate.setUTCDate(baseDate.getUTCDate() + days);
-  baseDate.setUTCHours(0, 0, 0, 0);
+    ? midnightUTCAfter(days, sub.nextRenewalDate)
+    : midnightUTCAfter(days);
 
   return prisma.subscription.update({
     where: { id: subscriptionId },
@@ -248,17 +246,18 @@ async function getDashboardStats() {
 }
 
 module.exports = {
+  splitName,
   findActiveByEmail,
   findActiveByEmailAndAmount,
-  findPendingByEmail,
+  findAllActiveByEmail,
+  abandonPendingByEmail,
   createPending,
   activateSubscription,
   findByPaymobOrder,
   getSubscriptionById,
   logPayment,
+  claimPayment,
   findPaymentByTransactionId,
-  updatePaymentStatus,
-  updateLastTransaction,
   renewSuccess,
   updatePaymobSubscription,
   findByPaymobSubscriptionId,

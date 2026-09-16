@@ -3,8 +3,8 @@ const rateLimit = require('express-rate-limit');
 const { requireAdmin, requireSupport, requireAnyRole } = require('../middleware/auth.middleware');
 const { requireAuthOrApiKey } = require('../middleware/api-key.middleware');
 const subscriptionService = require('../services/subscription.service');
-const ghlService = require('../services/ghl.service');
-const { dispatch } = require('../services/webhook-dispatch.service');
+const paymobService = require('../services/paymob.service');
+const { dispatchForSubscription } = require('../services/webhook-dispatch.service');
 const { log } = require('../utils/logger');
 
 const router = express.Router();
@@ -61,80 +61,32 @@ router.post('/:id/cancel', requireAuthOrApiKey('subscriptions:write'), async (re
       return res.status(400).json({ error: 'Invalid subscription ID' });
     }
     const result = await subscriptionService.cancelSubscription(subscriptionId);
+    const sub = result.subscription;
 
-    // ── Suspend on Paymob ────────────────────────────────────────────────────
-    const paymobService = require('../services/paymob.service');
-    if (result.subscription.paymobSubscriptionId) {
-      // Happy path: Paymob subscription ID is known — suspend directly
-      try {
-        const authToken = await paymobService.authenticate();
-        await paymobService.suspendSubscription(authToken, result.subscription.paymobSubscriptionId);
-        log('INFO', 'subscriptions', `Paymob subscription ${result.subscription.paymobSubscriptionId} suspended`);
-      } catch (paymobErr) {
-        log('WARN', 'subscriptions', 'Failed to suspend Paymob subscription', { error: paymobErr.message });
-      }
-    } else if (result.subscription.paymobPlanId) {
-      // Fallback: paymobSubscriptionId not linked (race condition on initial webhook).
-      // Search Paymob for the subscription instance by plan + email, then suspend.
-      try {
-        const authToken = await paymobService.authenticate();
-        const paymobSubs = await paymobService.searchSubscriptionsByPlan(authToken, result.subscription.paymobPlanId);
-        const email = result.subscription.email;
-        const match = paymobSubs.find(s =>
-          s.client_info?.email === email ||
-          s.billing_data?.email === email ||
-          s.customer?.email === email
-        );
-        if (match) {
-          await paymobService.suspendSubscription(authToken, match.id);
-          // Save the ID so future operations work directly
-          await subscriptionService.updatePaymobSubscription(subscriptionId, { paymobSubscriptionId: match.id });
-          log('INFO', 'subscriptions', `Paymob subscription found via plan search and suspended`, {
-            paymobSubId: match.id, subscriptionId,
-          });
-        } else {
-          log('WARN', 'subscriptions',
-            '⚠️ MANUAL ACTION REQUIRED — Paymob subscription not found via plan search. Suspend manually on Paymob dashboard.',
-            { subscriptionId, email, paymobPlanId: result.subscription.paymobPlanId }
-          );
+    // Stop future charges on Paymob now; the customer stays active until the period ends
+    try {
+      const suspendedId = await paymobService.suspendForSubscription(sub);
+      if (suspendedId) {
+        if (!sub.paymobSubscriptionId) {
+          await subscriptionService.updatePaymobSubscription(subscriptionId, { paymobSubscriptionId: suspendedId });
         }
-      } catch (paymobErr) {
-        log('WARN', 'subscriptions', 'Failed to find/suspend Paymob subscription via plan fallback', { error: paymobErr.message });
+        log('INFO', 'subscriptions', `Paymob subscription ${suspendedId} suspended for #${subscriptionId}`);
+      } else {
+        log('WARN', 'subscriptions',
+          '⚠️ MANUAL ACTION REQUIRED — Paymob subscription not found. Suspend it on the Paymob dashboard.',
+          { subscriptionId, email: sub.email, paymobPlanId: sub.paymobPlanId });
       }
-    } else {
-      log('WARN', 'subscriptions',
-        '⚠️ MANUAL ACTION REQUIRED — No Paymob subscription ID linked. Suspend manually on Paymob dashboard.',
-        { subscriptionId, email: result.subscription.email }
-      );
+    } catch (paymobErr) {
+      log('WARN', 'subscriptions', '⚠️ Failed to suspend Paymob subscription — use "Sync Paymob"', {
+        subscriptionId, error: paymobErr.message,
+      });
     }
-    await ghlService.notifyCancelRequested({
-      subscriptionId,
-      email: result.subscription.email,
-      firstName: result.subscription.firstName,
-      lastName: result.subscription.lastName,
-      phone: result.subscription.phone,
-      plan: result.subscription.plan,
-      activeUntil: result.activeUntil,
-      createdAt: result.subscription.createdAt,
-      productName: result.subscription.product?.name, productId: result.subscription.product?.id,
-    });
 
-    // Fire outbound webhooks for cancel_requested
-    await dispatch('cancel_requested', {
+    await dispatchForSubscription('cancel_requested', sub, {
       type: 'cancel_requested',
-      full_name: `${result.subscription.firstName} ${result.subscription.lastName}`,
-      email: result.subscription.email,
-      phone: result.subscription.phone,
-      plan: result.subscription.plan,
-      product_name: result.subscription.product?.name || '',
-      product_id: result.subscription.product?.id ? String(result.subscription.product.id) : '',
       payment_status: 'cancel_requested',
-      amount: (result.subscription.amountCents || 0) / 100,
-      currency: result.subscription.currency || 'EGP',
       active_until: result.activeUntil,
-      date_of_creation: result.subscription.createdAt,
-      subscription_id: subscriptionId,
-    }, result.subscription.productId);
+    });
 
     return res.status(200).json({
       success: true,
@@ -184,35 +136,17 @@ router.post('/:id/paymob-suspend', requireAuthOrApiKey('subscriptions:write'), a
     const sub = await subscriptionService.getSubscriptionById(subscriptionId);
     if (!sub) return res.status(404).json({ error: 'Subscription not found' });
 
-    const paymobService = require('../services/paymob.service');
-    const authToken = await paymobService.authenticate();
-
-    // Try direct suspend if ID is known
-    if (sub.paymobSubscriptionId) {
-      await paymobService.suspendSubscription(authToken, sub.paymobSubscriptionId);
-      log('INFO', 'subscriptions', `Force-suspended Paymob sub ${sub.paymobSubscriptionId} for local #${subscriptionId}`);
-      return res.json({ success: true, message: 'Paymob subscription suspended.' });
+    const suspendedId = await paymobService.suspendForSubscription(sub);
+    if (!suspendedId) {
+      return res.status(404).json({
+        error: 'Could not find matching Paymob subscription. Please suspend manually on the Paymob dashboard.',
+      });
     }
-
-    // Fallback: search by plan
-    if (sub.paymobPlanId) {
-      const paymobSubs = await paymobService.searchSubscriptionsByPlan(authToken, sub.paymobPlanId);
-      const match = paymobSubs.find(s =>
-        s.client_info?.email === sub.email ||
-        s.billing_data?.email === sub.email ||
-        s.customer?.email === sub.email
-      );
-      if (match) {
-        await paymobService.suspendSubscription(authToken, match.id);
-        await subscriptionService.updatePaymobSubscription(subscriptionId, { paymobSubscriptionId: match.id });
-        log('INFO', 'subscriptions', `Force-suspended via plan search, paymobSubId=${match.id} for local #${subscriptionId}`);
-        return res.json({ success: true, message: 'Paymob subscription found and suspended.' });
-      }
+    if (!sub.paymobSubscriptionId) {
+      await subscriptionService.updatePaymobSubscription(subscriptionId, { paymobSubscriptionId: suspendedId });
     }
-
-    return res.status(404).json({
-      error: 'Could not find matching Paymob subscription. Please suspend manually on the Paymob dashboard.',
-    });
+    log('INFO', 'subscriptions', `Force-suspended Paymob sub ${suspendedId} for local #${subscriptionId}`);
+    return res.json({ success: true, message: 'Paymob subscription suspended.' });
   } catch (err) {
     log('ERROR', 'subscriptions', 'paymob-suspend failed', { error: err.message });
     return res.status(500).json({ error: err.message });

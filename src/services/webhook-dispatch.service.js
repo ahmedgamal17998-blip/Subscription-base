@@ -56,4 +56,27 @@ async function dispatch(eventName, payload, productId) {
   );
 }
 
-module.exports = { dispatch };
+// Common payload fields for any subscription event; `extra` overrides/extends them.
+function subscriptionPayload(sub, extra = {}) {
+  return {
+    full_name: `${sub.firstName} ${sub.lastName}`,
+    email: sub.email,
+    phone: sub.phone,
+    plan: sub.plan,
+    product_name: sub.product?.name || '',
+    product_id: sub.product?.id ? String(sub.product.id) : '',
+    amount: (sub.amountCents || 0) / 100,
+    currency: sub.currency || 'EGP',
+    date_of_creation: sub.createdAt,
+    next_renewal: sub.nextRenewalDate,
+    subscription_id: sub.id,
+    ...extra,
+  };
+}
+
+// Fire an event for a subscription (sub must include `product`).
+function dispatchForSubscription(eventName, sub, extra) {
+  return dispatch(eventName, subscriptionPayload(sub, extra), sub.productId);
+}
+
+module.exports = { dispatch, subscriptionPayload, dispatchForSubscription };

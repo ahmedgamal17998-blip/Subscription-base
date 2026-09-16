@@ -46,16 +46,19 @@ paymob-ghl-autorenewal/
 │   │   └── paymob-plans.routes.js  # Admin: list Paymob subscription plans
 │   ├── services/
 │   │   ├── paymob.service.js   # Paymob API (auth, intention, checkout URL, subscriptions)
-│   │   ├── ghl.service.js      # Send events to GHL webhook
+│   │   ├── webhook-dispatch.service.js # Outbound webhooks (GHL, Booky, …) — DB-managed, HMAC-signed
+│   │   ├── coupon.service.js   # Coupon validation + usage counting
 │   │   ├── subscription.service.js # Subscription DB operations
 │   │   └── product.service.js  # Product/plan DB operations + Paymob plan creation
 │   ├── middleware/
 │   │   ├── hmac.middleware.js   # Verify Paymob HMAC (transaction webhooks)
-│   │   ├── admin.middleware.js  # x-admin-key header check (timing-safe)
+│   │   ├── auth.middleware.js   # JWT roles (admin / support / viewer)
+│   │   ├── api-key.middleware.js # JWT or scoped API key (viewers are read-only)
 │   │   └── validate.middleware.js  # Payment input validation + phone normalization
 │   ├── jobs/
 │   │   └── renewal.job.js      # Daily cron: mark abandoned, finalize cancellations
 │   └── utils/
+│       ├── plans.js            # Plan durations — single source of truth
 │       └── logger.js           # Structured logging with secret redaction
 ├── scripts/
 │   └── setup-plans.js          # One-time: create Paymob subscription plans (legacy)
@@ -77,6 +80,10 @@ paymob-ghl-autorenewal/
 ### Paymob Subscription Module for Recurring Billing
 
 Paymob handles recurring charges natively. The app creates Subscription Plans on Paymob, and the first payment links the customer to a Paymob subscription. Renewals are triggered by Paymob, not by our cron.
+
+**Always send `subscription_start_date` (YYYY-MM-DD, today + plan period) with the intention.** Without it Paymob starts the subscription on the checkout day and immediately deducts the plan amount via MOTO — the customer is charged twice. Any charge that still arrives before `nextRenewalDate` is stored as payment status `needs_refund` and must be refunded in Paymob.
+
+Changing a plan price creates a new Paymob plan (existing subscribers keep the old one). Product slugs never change after creation.
 
 ### Multi-Product Support
 

@@ -4,7 +4,8 @@ const { validatePaymentInput } = require('../middleware/validate.middleware');
 const paymobService = require('../services/paymob.service');
 const subscriptionService = require('../services/subscription.service');
 const productService = require('../services/product.service');
-const prisma = require('../db');
+const couponService = require('../services/coupon.service');
+const { planDays, midnightUTCAfter, toPaymobDate } = require('../utils/plans');
 const config = require('../config');
 const { log } = require('../utils/logger');
 
@@ -17,29 +18,6 @@ const paymentLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
 });
-
-// ── Coupon helper ─────────────────────────────────────────────────────────────
-async function applyCoupon(code, productId, amountCents) {
-  if (!code) return { discountCents: 0, coupon: null };
-
-  const coupon = await prisma.coupon.findUnique({ where: { code: code.trim().toUpperCase() } });
-  if (!coupon || !coupon.isActive) return { discountCents: 0, coupon: null };
-
-  // Product restriction
-  if (coupon.productId && productId && coupon.productId !== productId) return { discountCents: 0, coupon: null };
-
-  // Expiry
-  if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) return { discountCents: 0, coupon: null };
-
-  // Usage limit
-  if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) return { discountCents: 0, coupon: null };
-
-  const discountCents = coupon.discountType === 'percentage'
-    ? Math.round((amountCents * coupon.discountValue) / 100)
-    : Math.round(coupon.discountValue);
-
-  return { discountCents, coupon };
-}
 
 // ── POST /api/payment/create ──────────────────────────────────────────────────
 router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) => {
@@ -105,12 +83,14 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
     // Only apply coupon if product has coupons enabled OR it's a one-time payment
     const settingsEnabled = productObj?.settings?.couponsEnabled ?? false;
     if (couponCode && (settingsEnabled || productType === 'one_time')) {
-      const result = await applyCoupon(couponCode, productId, amountCents);
-      discountCents = result.discountCents;
-      appliedCoupon = result.coupon;
+      const result = await couponService.evaluateCoupon(couponCode, productId, amountCents);
+      if (result.ok) {
+        discountCents = result.discountCents;
+        appliedCoupon = result.coupon;
+      }
     }
 
-    const finalAmount = Math.max(100, amountCents - discountCents); // minimum 1 EGP
+    const finalAmount = couponService.finalAmountAfterDiscount(amountCents, discountCents);
 
     // ── Duplicate checks (only for subscriptions) ────────────────────────────
     if (productType === 'subscription') {
@@ -123,9 +103,11 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
         });
       }
 
-      const pendingSub = await subscriptionService.findPendingByEmail(email, productId);
-      if (pendingSub) {
-        return res.status(409).json({ error: 'A payment is already in progress for this email.' });
+      // A customer who left the Paymob page and came back must be able to retry.
+      // The old unpaid attempt is retired; if it still gets paid, the webhook activates it by order ID.
+      const superseded = await subscriptionService.abandonPendingByEmail(email, productId);
+      if (superseded.count) {
+        log('INFO', 'payment', 'Superseded unpaid checkout attempt(s)', { email, productId, count: superseded.count });
       }
     }
 
@@ -147,6 +129,8 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
       currency: config.CURRENCY,
       paymentMethods,
       subscriptionPlanId: isOneTime ? null : subscriptionPlanId,
+      // First automatic deduction one full period from now — today's charge is this checkout.
+      subscriptionStartDate: isOneTime ? null : toPaymobDate(midnightUTCAfter(planDays(plan))),
       items: [{
         name: itemName,
         amount: finalAmount,
@@ -175,7 +159,7 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
     try {
       subscription = await subscriptionService.createPending({
         name, email, phone,
-        plan: isOneTime ? plan : plan,
+        plan,
         amountCents: finalAmount,
         currency: config.CURRENCY,
         lastPaymobOrder: String(intentionResult.intention_order_id),
@@ -191,14 +175,6 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
         orderId: intentionResult.intention_order_id, email, plan, amountCents, error: dbErr.message,
       });
       return res.status(500).json({ error: 'Unable to create payment. Please try again.' });
-    }
-
-    // Increment coupon usage if applied
-    if (appliedCoupon) {
-      await prisma.coupon.update({
-        where: { id: appliedCoupon.id },
-        data: { usedCount: { increment: 1 } },
-      }).catch(() => {}); // non-blocking
     }
 
     const checkoutUrl = paymobService.getUnifiedCheckoutUrl(intentionResult.client_secret);

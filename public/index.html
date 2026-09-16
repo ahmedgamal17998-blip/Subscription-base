@@ -1175,7 +1175,7 @@
           return;
         }
         if (res.status === 409) {
-          showMsg('You already have an active ' + data.plan + ' subscription.', 'info');
+          showMsg(data.plan ? 'You already have an active ' + data.plan + ' subscription.' : (data.error || 'You already have an active subscription.'), 'info');
         } else if (res.status === 429) {
           showMsg('Too many attempts. Please wait a minute and try again.', 'error');
         } else {

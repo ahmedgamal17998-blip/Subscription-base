@@ -22,6 +22,7 @@ async function createIntention({
   currency,
   paymentMethods,
   subscriptionPlanId,
+  subscriptionStartDate,
   items,
   billingData,
   customer,
@@ -42,6 +43,9 @@ async function createIntention({
 
     if (subscriptionPlanId) {
       body.subscription_plan_id = subscriptionPlanId;
+      // Without a start date Paymob starts the subscription today and immediately
+      // deducts the plan amount via MOTO — on top of this checkout payment (double charge).
+      if (subscriptionStartDate) body.subscription_start_date = subscriptionStartDate;
     }
 
     const res = await axios.post('https://accept.paymob.com/v1/intention/', body, {
@@ -87,32 +91,53 @@ async function suspendSubscription(authToken, subscriptionId) {
   }
 }
 
-async function getSubscription(authToken, subscriptionId) {
-  try {
-    const res = await axios.get(`${BASE_URL}/acceptance/subscriptions/${subscriptionId}`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
-    log('INFO', 'paymob', 'Paymob subscription fetched', { subscriptionId });
-    return res.data;
-  } catch (err) {
-    log('ERROR', 'paymob', 'Paymob getSubscription failed', { subscriptionId, error: err.message });
-    throw new Error(`Paymob getSubscription failed: ${err.message}`);
-  }
-}
-
 async function searchSubscriptionsByPlan(authToken, planId) {
+  const results = [];
+  let url = `${BASE_URL}/acceptance/subscriptions`;
+  let params = { subscription_plan: planId, page_size: 100 };
   try {
-    const res = await axios.get(`${BASE_URL}/acceptance/subscriptions`, {
-      params: { subscription_plan: planId, page_size: 50 },
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    return res.data.results || res.data || [];
+    while (url) {
+      const res = await axios.get(url, { params, headers: { Authorization: `Bearer ${authToken}` } });
+      results.push(...(res.data.results || []));
+      url = res.data.next || null;
+      params = undefined; // `next` already carries the query string
+    }
   } catch (err) {
     log('WARN', 'paymob', 'searchSubscriptionsByPlan failed', { planId, error: err.message });
-    return [];
   }
+  return results;
+}
+
+/**
+ * Suspend the Paymob subscription behind a local subscription.
+ * Uses the stored Paymob ID, or finds it by plan + email when the ID was never linked.
+ * Returns the Paymob subscription ID that was suspended, or null if none was found.
+ */
+async function suspendForSubscription(sub) {
+  const authToken = await authenticate();
+  if (sub.paymobSubscriptionId) {
+    await suspendSubscription(authToken, sub.paymobSubscriptionId);
+    return sub.paymobSubscriptionId;
+  }
+  if (!sub.paymobPlanId) return null;
+
+  const email = sub.email.toLowerCase();
+  const matches = (await searchSubscriptionsByPlan(authToken, sub.paymobPlanId))
+    .filter((s) => (s.client_info?.email || '').toLowerCase() === email);
+  if (!matches.length) return null;
+
+  for (const m of matches) {
+    if (m.state !== 'suspended') await suspendSubscription(authToken, m.id);
+  }
+  return matches[0].id;
+}
+
+async function listSubscriptionPlans() {
+  const authToken = await authenticate();
+  const res = await axios.get(`${BASE_URL}/acceptance/subscription-plans`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  return res.data.results || res.data || [];
 }
 
 async function createSubscriptionPlan(authToken, { name, frequency, amountCents, integrationId, webhookUrl }) {
@@ -149,7 +174,8 @@ module.exports = {
   createIntention,
   getUnifiedCheckoutUrl,
   suspendSubscription,
-  getSubscription,
   searchSubscriptionsByPlan,
+  suspendForSubscription,
+  listSubscriptionPlans,
   createSubscriptionPlan,
 };

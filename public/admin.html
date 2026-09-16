@@ -966,7 +966,7 @@ function fmtDate(d) {
   catch { return d; }
 }
 function statusBadge(s) {
-  const m = { active: 'green', cancelled: 'red', expired: 'gray', pending: 'yellow', abandoned: 'orange', success: 'green', failed: 'red', paid: 'green' };
+  const m = { active: 'green', cancelled: 'red', expired: 'gray', pending: 'yellow', abandoned: 'orange', success: 'green', failed: 'red', paid: 'green', needs_refund: 'orange' };
   return '<span class="badge badge-' + (m[s] || 'gray') + '">' + (s || '—') + '</span>';
 }
 function escAttr(s) { return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -1212,15 +1212,18 @@ async function viewSubscription(id) {
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
         <div><div class="stat-label">Email</div><div style="font-size:14px;font-weight:500;margin-top:4px">${escAttr(s.email||s.customerEmail||'—')}</div></div>
-        <div><div class="stat-label">Name</div><div style="font-size:14px;font-weight:500;margin-top:4px">${escAttr(s.name||s.customerName||'—')}</div></div>
+        <div><div class="stat-label">Name</div><div style="font-size:14px;font-weight:500;margin-top:4px">${escAttr(((s.firstName||'') + ' ' + (s.lastName||'')).trim() || '—')}</div></div>
         <div><div class="stat-label">Status</div><div style="margin-top:4px">${s.status === 'active' && s.cancelledAt ? '<span class="badge badge-orange">cancel pending</span>' : statusBadge(s.status)}</div></div>
         <div><div class="stat-label">Plan</div><div style="font-size:14px;font-weight:500;margin-top:4px">${escAttr(s.planLabel||s.plan||'—')}</div></div>
         <div><div class="stat-label">Amount</div><div style="font-size:14px;font-weight:500;margin-top:4px">${fmt(s.amountCents || 0)}</div></div>
-        <div><div class="stat-label">Product</div><div style="font-size:14px;margin-top:4px">${escAttr(s.productName||'—')}</div></div>
+        <div><div class="stat-label">Product</div><div style="font-size:14px;margin-top:4px">${escAttr(s.product?.name||'—')}</div></div>
         <div><div class="stat-label">Created</div><div style="font-size:14px;margin-top:4px">${fmtDate(s.createdAt)}</div></div>
         <div><div class="stat-label">Next Renewal</div><div style="font-size:14px;margin-top:4px">${fmtDate(s.nextRenewalDate||s.renewsAt)}</div></div>
         ${s.couponCode ? '<div><div class="stat-label">Coupon</div><div style="font-size:14px;margin-top:4px">' + escAttr(s.couponCode) + '</div></div>' : ''}
       </div>
+      ${(s.payments||[]).length ? '<div style="margin-top:20px"><div class="stat-label" style="margin-bottom:8px">Payments</div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Status</th><th>Amount</th><th>Note</th></tr></thead><tbody>' +
+        s.payments.map(p => '<tr><td style="font-size:12px">' + fmtDate(p.createdAt) + '</td><td>' + escAttr(p.type) + '</td><td>' + statusBadge(p.status) + '</td><td>' + fmt(p.amountCents) + '</td><td style="font-size:12px;color:#64748b">' + escAttr(p.failReason || '') + '</td></tr>').join('') +
+        '</tbody></table></div></div>' : ''}
       ${s.status === 'active' && s.cancelledAt ? `<div style="margin-top:16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px;font-size:13px;color:#92400e;display:flex;align-items:center;justify-content:space-between;gap:12px"><div>⚠️ Cancel requested on <strong>${fmtDate(s.cancelledAt)}</strong> — customer stays active until <strong>${fmtDate(s.nextRenewalDate||s.renewsAt)}</strong></div><button class="btn btn-success btn-sm" onclick="reactivateSub('${s.id||s._id}');closeModal('sub-detail-modal')">↩ Undo Cancel</button></div>` : ''}
     `;
   } catch (e) {
