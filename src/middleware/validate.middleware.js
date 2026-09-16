@@ -1,4 +1,4 @@
-const { PLAN_TYPES } = require('../utils/plans');
+const { CHECKOUT_PLAN_TYPES } = require('../utils/plans');
 
 function validatePaymentInput(req, res, next) {
   let { name, email, phone, plan } = req.body;
@@ -12,8 +12,8 @@ function validatePaymentInput(req, res, next) {
   if (typeof phone !== 'string' || phone.trim().length < 8 || phone.trim().length > 20) {
     return res.status(400).json({ error: 'Invalid phone number.' });
   }
-  if (!PLAN_TYPES.includes(plan)) {
-    return res.status(400).json({ error: 'Invalid plan. Must be "weekly", "monthly", "3-months", "6-months", or "yearly".' });
+  if (!CHECKOUT_PLAN_TYPES.includes(plan)) {
+    return res.status(400).json({ error: `Invalid plan. Must be one of: ${CHECKOUT_PLAN_TYPES.join(', ')}.` });
   }
 
   req.body.name = name.trim();

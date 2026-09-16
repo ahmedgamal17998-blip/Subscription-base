@@ -5,7 +5,7 @@ const paymobService = require('../services/paymob.service');
 const subscriptionService = require('../services/subscription.service');
 const productService = require('../services/product.service');
 const couponService = require('../services/coupon.service');
-const { planDays, midnightUTCAfter, toPaymobDate } = require('../utils/plans');
+const { planDays, midnightUTCAfter, toPaymobDate, ONE_TIME_PLAN } = require('../utils/plans');
 const config = require('../config');
 const { log } = require('../utils/logger');
 
@@ -55,11 +55,19 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
         return res.status(400).json({ error: 'Wallet payment is not available for this product.' });
       }
 
-      // For subscription type: use Paymob subscription plan for auto-renewal
-      if (productType === 'subscription' && !useWallet && productPlan.paymobSubscriptionPlanId) {
+      // Recurring card payment → Paymob subscription plan for auto-renewal.
+      // one_time product, One-Time plan or wallet → a single standard payment.
+      const recurring = productType === 'subscription' && plan !== ONE_TIME_PLAN && !useWallet;
+      if (recurring) {
+        if (!productPlan.paymobSubscriptionPlanId) {
+          // Never sell a "subscription" that Paymob cannot renew
+          log('ERROR', 'payment', 'Plan has no Paymob subscription plan — checkout blocked', {
+            productSlug, plan, productPlanId: productPlan.id,
+          });
+          return res.status(503).json({ error: 'This plan is not available right now. Please contact support.' });
+        }
         subscriptionPlanId = productPlan.paymobSubscriptionPlanId;
       }
-      // one_time: no subscription plan — standard payment
     } else {
       // ── Legacy flow (env var amounts) ───────────────────────────────────────
       const amounts = { monthly: config.MONTHLY_AMOUNT_CENTS, yearly: config.YEARLY_AMOUNT_CENTS, weekly: config.WEEKLY_AMOUNT_CENTS };
@@ -76,13 +84,15 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
       }
     }
 
+    const isOneTime = productType === 'one_time' || plan === ONE_TIME_PLAN || useWallet;
+
     // ── Coupon application ───────────────────────────────────────────────────
     let discountCents = 0;
     let appliedCoupon = null;
 
     // Only apply coupon if product has coupons enabled OR it's a one-time payment
     const settingsEnabled = productObj?.settings?.couponsEnabled ?? false;
-    if (couponCode && (settingsEnabled || productType === 'one_time')) {
+    if (couponCode && (settingsEnabled || isOneTime)) {
       const result = await couponService.evaluateCoupon(couponCode, productId, amountCents);
       if (result.ok) {
         discountCents = result.discountCents;
@@ -92,8 +102,8 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
 
     const finalAmount = couponService.finalAmountAfterDiscount(amountCents, discountCents);
 
-    // ── Duplicate checks (only for subscriptions) ────────────────────────────
-    if (productType === 'subscription') {
+    // ── Duplicate checks (only for recurring subscriptions) ──────────────────
+    if (!isOneTime) {
       const existing = await subscriptionService.findActiveByEmail(email, productId);
       if (existing) {
         return res.status(409).json({
@@ -119,9 +129,8 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
     const [firstName, ...lastParts] = name.trim().split(/\s+/);
     const lastName = lastParts.join(' ') || 'NA';
 
-    const isOneTime = productType === 'one_time' || useWallet;
     const itemName = productName
-      ? `${productName} — ${plan}${isOneTime ? ' (One-time)' : ' Subscription'}`
+      ? `${productName} — ${plan === ONE_TIME_PLAN ? 'One-time' : plan}${isOneTime && plan !== ONE_TIME_PLAN ? ' (One-time)' : isOneTime ? '' : ' Subscription'}`
       : `${plan.charAt(0).toUpperCase() + plan.slice(1)} ${isOneTime ? 'Payment' : 'Subscription'}`;
 
     const intentionResult = await paymobService.createIntention({
@@ -134,7 +143,7 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
       items: [{
         name: itemName,
         amount: finalAmount,
-        description: isOneTime ? `${plan} one-time payment` : `${plan} auto-renewal subscription`,
+        description: isOneTime ? 'One-time payment' : `${plan} auto-renewal subscription`,
         quantity: 1,
       }],
       billingData: {

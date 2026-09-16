@@ -12,22 +12,26 @@ function splitName(fullName) {
 
 // ── Core functions ───────────────────────────────────────────────────────────
 
+// Active *recurring* subscriptions only — one-time and wallet purchases have no Paymob plan
 async function findActiveByEmail(email, productId) {
-  const where = { email, status: 'active' };
+  const where = { email, status: 'active', paymobPlanId: { not: null } };
   if (productId !== undefined) where.productId = productId;
   return prisma.subscription.findFirst({ where, include: { product: true } });
 }
 
 async function findActiveByEmailAndAmount(email, amountCents) {
   return prisma.subscription.findFirst({
-    where: { email, status: 'active', amountCents },
+    where: { email, status: 'active', amountCents, paymobPlanId: { not: null } },
     include: { product: true },
   });
 }
 
 // All active subscriptions for an email (used to avoid guessing when several exist).
 async function findAllActiveByEmail(email) {
-  return prisma.subscription.findMany({ where: { email, status: 'active' }, include: { product: true } });
+  return prisma.subscription.findMany({
+    where: { email, status: 'active', paymobPlanId: { not: null } },
+    include: { product: true },
+  });
 }
 
 async function abandonPendingByEmail(email, productId) {
