@@ -25,14 +25,23 @@ async function ensureUniqueSlug(baseSlug, excludeId) {
   }
 }
 
+// Raised when Paymob refuses a subscription plan — routes show the message to the admin
+class PaymobPlanError extends Error {
+  constructor(message) { super(message); this.code = 'PAYMOB_PLAN'; }
+}
+
+/**
+ * Create the Paymob subscription plan for a recurring plan type.
+ * Returns null for non-recurring types (one_time); throws PaymobPlanError on failure —
+ * a recurring plan without a Paymob plan can never renew, so it must not be saved silently.
+ */
 async function createPaymobPlan(productName, planType, amountCents) {
+  const frequency = PLAN_DAYS[planType];
+  if (!frequency) return null;
   try {
     const authToken = await paymobService.authenticate();
     const integrationId = config.PAYMOB_MOTO_INTEGRATION_ID || config.PAYMOB_INTEGRATION_ID;
     const webhookUrl = config.APP_URL ? `${config.APP_URL}/api/webhook/paymob-subscription` : '';
-    const frequency = PLAN_DAYS[planType];
-    if (!frequency) return null;
-
     const result = await paymobService.createSubscriptionPlan(authToken, {
       name: `${productName} — ${planType}`,
       frequency,
@@ -43,9 +52,23 @@ async function createPaymobPlan(productName, planType, amountCents) {
     log('INFO', 'product', `Paymob plan created for ${productName} (${planType})`, { paymobPlanId: result.id });
     return result.id;
   } catch (err) {
-    log('WARN', 'product', `Failed to create Paymob plan for ${productName} (${planType})`, { error: err.message });
-    return null;
+    log('ERROR', 'product', `Failed to create Paymob plan for ${productName} (${planType})`, { error: err.message });
+    throw new PaymobPlanError(`Could not create the ${planType} plan on Paymob. ${err.message}`);
   }
+}
+
+/**
+ * Make sure a recurring plan has its Paymob subscription plan (repairs plans saved while
+ * Paymob plan creation was failing). Returns the Paymob plan ID.
+ */
+async function ensurePaymobPlan(productPlan, productName) {
+  if (productPlan.paymobSubscriptionPlanId) return productPlan.paymobSubscriptionPlanId;
+  const paymobPlanId = await createPaymobPlan(productName, productPlan.planType, productPlan.amountCents);
+  if (paymobPlanId) {
+    await prisma.productPlan.update({ where: { id: productPlan.id }, data: { paymobSubscriptionPlanId: paymobPlanId } });
+    log('INFO', 'product', 'Missing Paymob plan created on demand', { productPlanId: productPlan.id, paymobPlanId });
+  }
+  return paymobPlanId;
 }
 
 async function createProduct({ name, description, walletEnabled, productType, plans }) {
@@ -148,7 +171,7 @@ async function addPlan(productId, { planType, amountCents, currency, label, inte
         label,
         intervalLabel,
         badge: badge || null,
-        paymobSubscriptionPlanId: paymobPlanId ?? existing.paymobSubscriptionPlanId,
+        paymobSubscriptionPlanId: paymobPlanId,
       },
     });
   }
@@ -180,8 +203,7 @@ async function updatePlan(planId, data) {
     // Existing subscribers stay on their old plan/price.
     if (data.amountCents !== plan.amountCents && plan.product.productType !== 'one_time') {
       const paymobPlanId = await createPaymobPlan(plan.product.name, plan.planType, data.amountCents);
-      if (!paymobPlanId) throw new Error('Failed to create the Paymob plan for the new price. Price was not changed.');
-      updateData.paymobSubscriptionPlanId = paymobPlanId;
+      if (paymobPlanId) updateData.paymobSubscriptionPlanId = paymobPlanId;
     }
   }
   if (data.currency !== undefined) updateData.currency = data.currency;
@@ -267,6 +289,8 @@ async function getPublicProductConfig(slug) {
 }
 
 module.exports = {
+  PaymobPlanError,
+  ensurePaymobPlan,
   slugify,
   createProduct,
   listProducts,

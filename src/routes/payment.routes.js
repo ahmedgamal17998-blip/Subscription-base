@@ -59,14 +59,16 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
       // one_time product, One-Time plan or wallet → a single standard payment.
       const recurring = productType === 'subscription' && plan !== ONE_TIME_PLAN && !useWallet;
       if (recurring) {
-        if (!productPlan.paymobSubscriptionPlanId) {
+        try {
+          // Repairs plans that were saved while Paymob plan creation was failing
+          subscriptionPlanId = await productService.ensurePaymobPlan(productPlan, productName);
+        } catch (err) {
           // Never sell a "subscription" that Paymob cannot renew
           log('ERROR', 'payment', 'Plan has no Paymob subscription plan — checkout blocked', {
-            productSlug, plan, productPlanId: productPlan.id,
+            productSlug, plan, productPlanId: productPlan.id, error: err.message,
           });
           return res.status(503).json({ error: 'This plan is not available right now. Please contact support.' });
         }
-        subscriptionPlanId = productPlan.paymobSubscriptionPlanId;
       }
     } else {
       // ── Legacy flow (env var amounts) ───────────────────────────────────────

@@ -35,6 +35,10 @@ router.get('/', adminLimiter, requireAdmin, async (req, res) => {
 router.post('/', adminLimiter, requireAdmin, async (req, res) => {
   try {
     const { name, description, walletEnabled, plans } = req.body;
+    const productType = req.body.productType ?? req.body.type; // admin sends `type`
+    if (productType !== undefined && !['subscription', 'one_time'].includes(productType)) {
+      return res.status(400).json({ error: 'Invalid product type.' });
+    }
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Product name is required.' });
     }
@@ -58,13 +62,14 @@ router.post('/', adminLimiter, requireAdmin, async (req, res) => {
       }
     }
 
-    const product = await productService.createProduct({ name: name.trim(), description, walletEnabled: !!walletEnabled, plans });
+    const product = await productService.createProduct({ name: name.trim(), description, walletEnabled: !!walletEnabled, productType, plans });
     log('INFO', 'products', 'Product created', { productId: product.id, slug: product.slug });
     return res.status(201).json(product);
   } catch (err) {
     if (err.code === 'P2002') {
       return res.status(409).json({ error: 'A product with this name already exists.' });
     }
+    if (err.code === 'PAYMOB_PLAN') return res.status(502).json({ error: err.message });
     log('ERROR', 'products', 'Failed to create product', { error: err.message });
     return res.status(500).json({ error: 'Failed to create product.' });
   }
@@ -86,7 +91,11 @@ router.get('/:id', adminLimiter, requireAdmin, async (req, res) => {
 router.put('/:id', adminLimiter, requireAdmin, async (req, res) => {
   try {
     const { name, description, isActive, walletEnabled } = req.body;
-    const product = await productService.updateProduct(req.params.id, { name, description, isActive, walletEnabled });
+    const productType = req.body.productType ?? req.body.type; // admin sends `type`
+    if (productType !== undefined && !['subscription', 'one_time'].includes(productType)) {
+      return res.status(400).json({ error: 'Invalid product type.' });
+    }
+    const product = await productService.updateProduct(req.params.id, { name, description, isActive, walletEnabled, productType });
     log('INFO', 'products', 'Product updated', { productId: product.id });
     return res.json(product);
   } catch (err) {
@@ -110,6 +119,7 @@ router.post('/:id/plans', adminLimiter, requireAdmin, async (req, res) => {
     return res.status(201).json(plan);
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ error: 'This plan type already exists for this product.' });
+    if (err.code === 'PAYMOB_PLAN') return res.status(502).json({ error: err.message });
     log('ERROR', 'products', 'Failed to add plan', { error: err.message });
     return res.status(500).json({ error: 'Failed to add plan.' });
   }
@@ -124,8 +134,8 @@ router.put('/:id/plans/:planId', adminLimiter, requireAdmin, async (req, res) =>
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Plan not found' });
     log('ERROR', 'products', 'Failed to update plan', { error: err.message });
-    const paymobFailure = err.message.startsWith('Failed to create the Paymob plan');
-    return res.status(paymobFailure ? 502 : 500).json({ error: paymobFailure ? err.message : 'Failed to update plan.' });
+    if (err.code === 'PAYMOB_PLAN') return res.status(502).json({ error: err.message + ' Price was not changed.' });
+    return res.status(500).json({ error: 'Failed to update plan.' });
   }
 });
 

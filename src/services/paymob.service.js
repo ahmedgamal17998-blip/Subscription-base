@@ -164,8 +164,9 @@ async function createSubscriptionPlan(authToken, { name, frequency, amountCents,
     log('INFO', 'paymob', 'Paymob subscription plan created', { planId: res.data.id, name });
     return res.data;
   } catch (err) {
-    log('ERROR', 'paymob', 'Paymob createSubscriptionPlan failed', { name, error: err.message });
-    throw new Error(`Paymob createSubscriptionPlan failed: ${err.message}`);
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    log('ERROR', 'paymob', 'Paymob createSubscriptionPlan failed', { name, error: detail });
+    throw new Error(`Paymob rejected the plan: ${detail}`);
   }
 }
 

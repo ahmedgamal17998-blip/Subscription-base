@@ -1,5 +1,7 @@
-// Single source of truth for plan durations (days).
-const PLAN_DAYS = { weekly: 7, monthly: 30, '3-months': 90, '6-months': 180, yearly: 365 };
+// Single source of truth for plan durations (days) — also the Paymob plan `frequency`.
+// Paymob only accepts fixed frequencies: a year is 360 days (365 is rejected), and our
+// renewal dates must follow Paymob's schedule or real renewals look "early".
+const PLAN_DAYS = { weekly: 7, monthly: 30, '3-months': 90, '6-months': 180, yearly: 360 };
 
 const PLAN_TYPES = Object.keys(PLAN_DAYS);
 
