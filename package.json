@@ -1,9 +1,8 @@
 {
   "name": "paymob-ghl-autorenewal",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Paymob + GoHighLevel subscription auto-renewal system",
   "main": "src/index.js",
-  "version": "2.0.0",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
@@ -12,7 +11,8 @@
     "db:migrate": "npx prisma migrate deploy",
     "db:studio": "npx prisma studio",
     "seed:admin": "node scripts/seed-admin.js",
-    "postinstall": "npx prisma generate"
+    "postinstall": "npx prisma generate",
+    "test": "node tests/checkout.test.js"
   },
   "dependencies": {
     "@prisma/client": "^5.7.1",

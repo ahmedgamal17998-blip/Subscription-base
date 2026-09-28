@@ -46,11 +46,20 @@ router.post('/', adminLimiter, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'At least one plan is required.' });
     }
 
-    const validPlanTypes = ['weekly', 'monthly', '3-months', '6-months', 'yearly'];
+    const { CHECKOUT_PLAN_TYPES } = require('../utils/plans');
+    const seen = new Set();
     for (const plan of plans) {
-      if (!validPlanTypes.includes(plan.planType)) {
+      if (!CHECKOUT_PLAN_TYPES.includes(plan.planType)) {
         return res.status(400).json({ error: `Invalid plan type: ${plan.planType}` });
       }
+      if (seen.has(plan.planType)) {
+        return res.status(400).json({
+          error: plan.planType === 'one_time'
+            ? 'A product can have only one One-Time plan. Use a separate product for another one-time offer.'
+            : `Duplicate plan type: ${plan.planType}`,
+        });
+      }
+      seen.add(plan.planType);
       if (!plan.amountCents || plan.amountCents <= 0) {
         return res.status(400).json({ error: `Amount is required for plan: ${plan.planType}` });
       }

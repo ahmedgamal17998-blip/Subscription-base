@@ -522,8 +522,8 @@ tr:hover td{background:#fafbfc}
         <div class="form-group">
           <label style="margin-bottom:8px">Product Type</label>
           <div style="display:flex;gap:20px">
-            <label class="form-check"><input type="radio" name="pf-type" value="subscription" checked> Subscription</label>
-            <label class="form-check"><input type="radio" name="pf-type" value="one_time"> One-Time</label>
+            <label class="form-check"><input type="radio" name="pf-type" value="subscription" onchange="onProductTypeChange()" checked> Subscription</label>
+            <label class="form-check"><input type="radio" name="pf-type" value="one_time" onchange="onProductTypeChange()"> One-Time</label>
           </div>
         </div>
         <div class="form-group">
@@ -532,8 +532,9 @@ tr:hover td{background:#fafbfc}
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <label style="font-size:13px;font-weight:600;color:#374151">Plans</label>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="addPlanRow()">+ Add Plan</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="pf-add-plan" onclick="addPlanRow()">+ Add Plan</button>
           </div>
+          <p id="pf-plans-hint" style="display:none;font-size:12px;color:#64748b;margin:-4px 0 10px">One-Time products have a single price — no renewal interval.</p>
           <div id="pf-plans-list"></div>
         </div>
       </form>
@@ -1304,6 +1305,7 @@ function openNewProductModal() {
   document.getElementById('product-form').reset();
   document.getElementById('pf-plans-list').innerHTML = '';
   addPlanRow();
+  onProductTypeChange();
   openModal('product-modal');
 }
 
@@ -1323,6 +1325,7 @@ function openEditProductModal() {
   if (radio) radio.checked = true;
   // Hide plans section (editing plans done via panel)
   document.getElementById('pf-plans-list').innerHTML = '<p style="font-size:12px;color:#94a3b8;padding:8px 0">Plans are managed from the Plans tab. Only name, description and settings are updated here.</p>';
+  onProductTypeChange();
   openModal('product-modal');
 }
 
@@ -1336,34 +1339,72 @@ function addPlanRow(plan) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group" style="margin:0"><label style="font-size:12px">Label *</label><input type="text" name="plan-label" value="${escAttr(plan?.label||'')}" placeholder="Monthly Pro"></div>
       <div class="form-group" style="margin:0"><label style="font-size:12px">Amount EGP *</label><input type="number" name="plan-amount" step="0.01" value="${plan ? (plan.amount / 100).toFixed(2) : ''}" placeholder="99.00"></div>
-      <div class="form-group" style="margin:0"><label style="font-size:12px">Type</label>
-        <select name="plan-type"><option value="recurring" ${plan?.type==='recurring'?'selected':''}>Recurring</option><option value="one_time" ${plan?.type==='one_time'?'selected':''}>One-Time</option></select>
+      <div class="form-group plan-recurring-only" style="margin:0"><label style="font-size:12px">Type</label>
+        <select name="plan-type" onchange="onPlanRowTypeChange(this)"><option value="recurring" ${plan?.planType!=='one_time'?'selected':''}>Recurring</option><option value="one_time" ${plan?.planType==='one_time'?'selected':''}>One-Time</option></select>
       </div>
-      <div class="form-group" style="margin:0"><label style="font-size:12px">Interval</label>
+      <div class="form-group plan-interval-only" style="margin:0"><label style="font-size:12px">Interval</label>
         <select name="plan-interval"><option value="monthly" ${plan?.planType==='monthly'?'selected':''}>Monthly</option><option value="3-months" ${plan?.planType==='3-months'?'selected':''}>3 Months</option><option value="6-months" ${plan?.planType==='6-months'?'selected':''}>6 Months</option><option value="yearly" ${plan?.planType==='yearly'?'selected':''}>Yearly</option><option value="weekly" ${plan?.planType==='weekly'?'selected':''}>Weekly</option></select>
       </div>
       <div class="form-group" style="margin:0;grid-column:1/-1"><label style="font-size:12px">Badge (optional)</label><input type="text" name="plan-badge" value="${escAttr(plan?.badge||'')}" placeholder="Popular"></div>
     </div>
   `;
   document.getElementById('pf-plans-list').appendChild(div);
+  applyPlanRowVisibility(div);
+}
+
+// One-Time product → no plan type / interval pickers at all; one price only.
+function onProductTypeChange() {
+  const isOneTime = currentProductFormType() === 'one_time';
+  const list = document.getElementById('pf-plans-list');
+  const rows = list.querySelectorAll(':scope > div');
+  if (isOneTime) {
+    // A product can hold only one One-Time plan
+    rows.forEach((row, i) => { if (i > 0) row.remove(); });
+    if (!list.querySelector(':scope > div') && !editingProductId) addPlanRow();
+  }
+  document.getElementById('pf-add-plan').style.display = isOneTime ? 'none' : '';
+  document.getElementById('pf-plans-hint').style.display = isOneTime ? '' : 'none';
+  list.querySelectorAll(':scope > div').forEach(applyPlanRowVisibility);
+}
+
+function currentProductFormType() {
+  const el = document.querySelector('input[name="pf-type"]:checked');
+  return el ? el.value : 'subscription';
+}
+
+function onPlanRowTypeChange(select) {
+  applyPlanRowVisibility(select.closest('#pf-plans-list > div'));
+}
+
+// Hide the interval when this row is a one-time price (by product type or row type)
+function applyPlanRowVisibility(row) {
+  if (!row) return;
+  const productIsOneTime = currentProductFormType() === 'one_time';
+  const typeSelect = row.querySelector('[name="plan-type"]');
+  const rowIsOneTime = productIsOneTime || (typeSelect && typeSelect.value === 'one_time');
+  row.querySelectorAll('.plan-recurring-only').forEach(el => { el.style.display = productIsOneTime ? 'none' : ''; });
+  row.querySelectorAll('.plan-interval-only').forEach(el => { el.style.display = rowIsOneTime ? 'none' : ''; });
 }
 
 async function saveProduct() {
   const btn = document.getElementById('product-save-btn');
   const name = document.getElementById('pf-name').value.trim();
   if (!name) { toast('Product name required', 'error'); return; }
+  const productType = currentProductFormType();
   const plans = [];
   document.querySelectorAll('#pf-plans-list > div').forEach(row => {
     const label = row.querySelector('[name="plan-label"]').value.trim();
     const amountRaw = parseFloat(row.querySelector('[name="plan-amount"]').value);
     if (label && !isNaN(amountRaw)) {
-      const planTypeVal = row.querySelector('[name="plan-interval"]').value;
-      const intervalLabelMap = { 'weekly': 'Weekly', 'monthly': 'Monthly', '3-months': '3 Months', '6-months': '6 Months', 'yearly': 'Yearly' };
+      const rowType = row.querySelector('[name="plan-type"]')?.value;
+      const oneTime = productType === 'one_time' || rowType === 'one_time';
+      const planTypeVal = oneTime ? 'one_time' : row.querySelector('[name="plan-interval"]').value;
+      const intervalLabelMap = { 'weekly': 'Weekly', 'monthly': 'Monthly', '3-months': '3 Months', '6-months': '6 Months', 'yearly': 'Yearly', 'one_time': 'One-Time' };
       plans.push({ label, amountCents: Math.round(amountRaw * 100), planType: planTypeVal, intervalLabel: intervalLabelMap[planTypeVal] || planTypeVal, badge: row.querySelector('[name="plan-badge"]').value.trim() || undefined });
     }
   });
-  const typeEl = document.querySelector('input[name="pf-type"]:checked');
-  const payload = { name, description: document.getElementById('pf-desc').value.trim(), type: typeEl ? typeEl.value : 'subscription', walletEnabled: document.getElementById('pf-wallet').checked, plans };
+  if (!editingProductId && !plans.length) { toast('Add at least one plan with a label and amount', 'error'); return; }
+  const payload = { name, description: document.getElementById('pf-desc').value.trim(), type: productType, walletEnabled: document.getElementById('pf-wallet').checked, plans };
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Saving…';
   try {
