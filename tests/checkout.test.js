@@ -70,6 +70,7 @@ function model(name) {
     findMany: async ({ where } = {}) => t.filter((x) => match(x, where)).map((x) => withIncludes(name, x)),
     count: async ({ where } = {}) => t.filter((x) => match(x, where)).length,
     create: async ({ data }) => {
+      if (failNext[name] > 0) { failNext[name]--; throw new Error('database unavailable'); }
       if (name === 'payment' && t.some((x) => x.transactionId === data.transactionId)) {
         throw Object.assign(new Error('unique'), { code: 'P2002' });
       }
@@ -97,7 +98,11 @@ function model(name) {
   };
   return api;
 }
-const prisma = new Proxy({}, { get: (_, k) => (k === '$transaction' ? (a) => Promise.all(a) : model(k)) });
+// $transaction: array form, or callback form (no rollback needed for these tests)
+const failNext = { payment: 0 }; // make the next N writes to a table throw, like a DB hiccup
+const prisma = new Proxy({}, {
+  get: (_, k) => (k === '$transaction' ? (a) => (typeof a === 'function' ? a(prisma) : Promise.all(a)) : model(k)),
+});
 require.cache[require.resolve(r('src/db.js'))] = { exports: prisma, loaded: true, id: r('src/db.js') };
 require.cache[require.resolve(r('src/utils/logger.js'))] = { exports: { log: () => {} }, loaded: true, id: r('src/utils/logger.js') };
 
@@ -283,6 +288,28 @@ async function test(name, fn) {
     await tx(904, 6004, 99999);
     assert.strictEqual(db.payment.find((x) => x.transactionId === '904'), undefined);
     assert.strictEqual(calls.dispatched.length, n);
+  });
+
+  await test('a DB failure answers 500 (Paymob retries) and the retry then activates', async () => {
+    const res0 = await call('POST', '/api/payment/create', { ...pay, email: 'retry@x.com' });
+    assert.strictEqual(res0.status, 200, JSON.stringify(res0.body));
+    const order = orderSeq;
+    const n = calls.dispatched.length;
+    failNext.payment = 1;
+    const first = await tx(910, order, 150000, true, 'retry@x.com');
+    assert.strictEqual(first.status, 500);
+    assert.strictEqual(db.subscription.at(-1).status, 'pending');
+    assert.strictEqual(calls.dispatched.length, n, 'no event before the payment is stored');
+    const second = await tx(910, order, 150000, true, 'retry@x.com');
+    assert.strictEqual(second.status, 200);
+    assert.strictEqual(db.subscription.at(-1).status, 'active');
+    assert.deepStrictEqual(calls.dispatched.slice(n), ['payment_success']);
+  });
+
+  await test('"already subscribed" reply does not reveal the plan or renewal date', async () => {
+    const res = await call('POST', '/api/payment/create', { ...pay, email: 'retry@x.com' });
+    assert.strictEqual(res.status, 409);
+    assert.deepStrictEqual(Object.keys(res.body), ['error']);
   });
 
   // ── one-time ───────────────────────────────────────────────────────────────

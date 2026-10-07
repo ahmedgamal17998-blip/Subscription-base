@@ -11,13 +11,27 @@ const { log } = require('../utils/logger');
 
 const router = express.Router();
 
-const paymentLimiter = rateLimit({
+const limitMessage = { error: 'Too many requests. Please try again later.' };
+
+// Many real customers share one IP (mobile carriers, offices, and our own booking apps calling
+// from the server), so the strict limit is per customer (IP + email). The per-IP ceiling only
+// stops floods.
+const perCustomerLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please try again later.' },
+  keyGenerator: (req) => `${req.ip}|${String(req.body?.email || '').toLowerCase().trim()}`,
+  message: limitMessage,
 });
+const perIpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: limitMessage,
+});
+const paymentLimiter = [perIpLimiter, perCustomerLimiter];
 
 // ── POST /api/payment/create ──────────────────────────────────────────────────
 router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) => {
@@ -108,11 +122,8 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
     if (!isOneTime) {
       const existing = await subscriptionService.findActiveByEmail(email, productId);
       if (existing) {
-        return res.status(409).json({
-          error: 'An active subscription already exists for this email.',
-          plan: existing.plan,
-          nextRenewalDate: existing.nextRenewalDate,
-        });
+        // Anyone can type any email here — never reveal that person's plan or renewal date
+        return res.status(409).json({ error: 'An active subscription already exists for this email.' });
       }
 
       // A customer who left the Paymob page and came back must be able to retry.

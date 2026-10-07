@@ -67,6 +67,7 @@ router.put('/', limiter, requireAdmin, async (req, res) => {
       create: { productId, ...data },
     });
 
+    require('../services/product.service').clearConfigCache();
     log('INFO', 'settings', 'Product settings updated', { productId });
     return res.json(settings);
   } catch (err) {

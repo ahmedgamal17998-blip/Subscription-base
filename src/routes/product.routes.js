@@ -11,13 +11,19 @@ const adminLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, message: 
 // ── Public: product config for subscribe page ───────────────────────────────
 router.get('/slug/:slug/config', async (req, res) => {
   try {
-    const config = await productService.getPublicProductConfig(req.params.slug);
+    const config = await productService.getPublicProductConfigCached(req.params.slug);
     if (!config) return res.status(404).json({ error: 'Product not found' });
     return res.json(config);
   } catch (err) {
     log('ERROR', 'products', 'Failed to get product config', { error: err.message });
     return res.status(500).json({ error: 'Failed to get product config.' });
   }
+});
+
+// Any admin change below must show up on the checkout page immediately
+router.use((req, res, next) => {
+  if (req.method !== 'GET') res.on('finish', () => productService.clearConfigCache());
+  next();
 });
 
 // ── Admin: list all products ────────────────────────────────────────────────

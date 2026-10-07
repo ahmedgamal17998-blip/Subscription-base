@@ -242,6 +242,24 @@ async function deletePlan(planId) {
   return prisma.productPlan.delete({ where: { id: parseInt(planId) } });
 }
 
+// The checkout page asks for this on every visit. Cache it briefly so a traffic spike
+// costs one DB query per product instead of one per visitor. Cleared on any admin change.
+const CONFIG_TTL_MS = 30 * 1000;
+const configCache = new Map();
+
+async function getPublicProductConfigCached(slug) {
+  const hit = configCache.get(slug);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  const value = await getPublicProductConfig(slug);
+  if (configCache.size > 500) configCache.clear();
+  configCache.set(slug, { value, expires: Date.now() + (value ? CONFIG_TTL_MS : 5000) });
+  return value;
+}
+
+function clearConfigCache() {
+  configCache.clear();
+}
+
 async function getPublicProductConfig(slug) {
   const product = await prisma.product.findUnique({
     where: { slug },
@@ -303,4 +321,6 @@ module.exports = {
   deleteProduct,
   deletePlan,
   getPublicProductConfig,
+  getPublicProductConfigCached,
+  clearConfigCache,
 };

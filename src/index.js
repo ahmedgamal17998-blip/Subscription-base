@@ -4,6 +4,9 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
+const fs = require('fs');
+const zlib = require('zlib');
+const crypto = require('crypto');
 
 const paymentRoutes = require('./routes/payment.routes');
 const webhookRoutes = require('./routes/webhook.routes');
@@ -89,9 +92,16 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
 }));
 
-// Allow checkout pages to be embedded in iframes from any domain
+// Checkout pages may be embedded in iframes from any domain — the admin dashboard may not
+// (framing it would allow clickjacking of cancel/delete buttons).
 app.use((req, res, next) => {
-  res.setHeader('X-Frame-Options', 'ALLOWALL');
+  if (req.path === '/admin.html') {
+    res.setHeader('X-Frame-Options', 'DENY');
+    const csp = res.getHeader('Content-Security-Policy');
+    if (csp) res.setHeader('Content-Security-Policy', String(csp).replace(/frame-ancestors [^;]*/, "frame-ancestors 'none'"));
+  } else {
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+  }
   next();
 });
 
@@ -124,8 +134,23 @@ app.use('/api/api-keys', apiKeysRoutes);
 app.use('/api/sso', ssoRoutes);
 
 // ── SPA & Static routes ──────────────────────────────────────────────────────
+// The checkout page is the hot path during a launch: keep it in memory, compressed once,
+// instead of reading the file and sending 38 KB uncompressed for every visitor.
+const checkoutHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'));
+const checkoutHtmlGzip = zlib.gzipSync(checkoutHtml, { level: 9 });
+const checkoutEtag = `"${crypto.createHash('sha1').update(checkoutHtml).digest('hex').slice(0, 16)}"`;
+
 app.get('/subscribe/:slug', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.setHeader('ETag', checkoutEtag);
+  res.setHeader('Vary', 'Accept-Encoding');
+  if (req.headers['if-none-match'] === checkoutEtag) return res.status(304).end();
+  if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+    res.setHeader('Content-Encoding', 'gzip');
+    return res.end(checkoutHtmlGzip);
+  }
+  return res.end(checkoutHtml);
 });
 
 app.get('/health', async (req, res) => {

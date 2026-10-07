@@ -11,7 +11,10 @@ const { log } = require('../utils/logger');
 
 const router = express.Router();
 
-const webhookLimiter = rateLimit({ windowMs: 1 * 60 * 1000, limit: 60, message: { error: 'Too many requests' } });
+// Paymob sends every customer's webhooks from the same few IPs (several per payment), so a tight
+// per-IP limit would drop real payments during a busy launch. These routes are HMAC-verified;
+// this limit only guards against floods.
+const webhookLimiter = rateLimit({ windowMs: 1 * 60 * 1000, limit: 6000, message: { error: 'Too many requests' } });
 router.use(webhookLimiter);
 
 // ── Transaction Webhook (from Paymob) ────────────────────────────────────────
@@ -109,23 +112,20 @@ router.post('/paymob', verifyHmac, async (req, res) => {
     }
 
     // Record first; if another delivery of this webhook already did, stop here (no duplicate events)
-    const claimed = await subscriptionService.claimPayment({
-      ...base,
-      status: success ? 'success' : 'failed',
-      failReason: success ? null : failReason,
+    const claimed = await subscriptionService.recordPayment({
+      payment: { ...base, status: success ? 'success' : 'failed', failReason: success ? null : failReason },
+      apply: success ? type : null,
+      paymentMethod,
+      plan: sub.plan,
     });
     if (!claimed) {
       log('INFO', 'webhook', 'Already processed', { transactionId });
       return res.status(200).json({ message: 'Already processed' });
     }
 
-    if (success) {
-      if (type === 'initial') {
-        await subscriptionService.activateSubscription(sub.id, transactionId, paymentMethod);
-        await couponService.recordUse(sub.couponCode);
-      } else {
-        await subscriptionService.renewSuccess(sub.id, orderId, transactionId, sub.plan);
-      }
+    if (success && type === 'initial') {
+      await couponService.recordUse(sub.couponCode).catch((err) =>
+        log('WARN', 'webhook', 'Coupon usage not counted', { code: sub.couponCode, error: err.message }));
     }
 
     const updatedSub = await subscriptionService.getSubscriptionById(sub.id);
@@ -146,8 +146,10 @@ router.post('/paymob', verifyHmac, async (req, res) => {
 
     return res.status(200).json({ message: 'ok' });
   } catch (err) {
+    // Do NOT answer 200 here: that tells Paymob the payment was handled and it is lost for good.
+    // A 500 lets Paymob retry; processing is idempotent per transaction.
     log('ERROR', 'webhook', 'Webhook processing error', { error: err.message });
-    return res.status(200).json({ message: 'ok' });
+    return res.status(500).json({ error: 'Temporary failure, please retry' });
   }
 });
 
@@ -246,7 +248,7 @@ router.post('/paymob-subscription', async (req, res) => {
     return res.status(200).json({ message: 'ok' });
   } catch (err) {
     log('ERROR', 'sub-webhook', 'Subscription webhook error', { error: err.message });
-    return res.status(200).json({ message: 'ok' });
+    return res.status(500).json({ error: 'Temporary failure, please retry' });
   }
 });
 

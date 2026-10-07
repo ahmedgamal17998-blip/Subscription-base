@@ -59,10 +59,10 @@ async function createPending({ name, email, phone, plan, amountCents, currency, 
   });
 }
 
-async function activateSubscription(subscriptionId, transactionId, paymentMethod) {
+async function activateSubscription(subscriptionId, transactionId, paymentMethod, db = prisma) {
   const data = { status: 'active', lastTransactionId: String(transactionId) };
   if (paymentMethod) data.paymentMethod = paymentMethod;
-  return prisma.subscription.update({ where: { id: subscriptionId }, data });
+  return db.subscription.update({ where: { id: subscriptionId }, data });
 }
 
 async function findByPaymobOrder(orderId) {
@@ -97,21 +97,42 @@ async function claimPayment({ subscriptionId, paymobOrderId, transactionId, amou
   }
 }
 
+/**
+ * Record a transaction and apply its effect (activate / renew) atomically.
+ * Either both happen or neither does, so a failure mid-way can be retried by Paymob
+ * instead of leaving a paid customer stuck as "pending".
+ * Returns false if this transaction was already recorded (duplicate webhook).
+ */
+async function recordPayment({ payment, apply, paymentMethod, plan }) {
+  const { subscriptionId, paymobOrderId, transactionId } = payment;
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.create({ data: { ...payment, transactionId: String(transactionId) } });
+      if (apply === 'initial') await activateSubscription(subscriptionId, transactionId, paymentMethod, tx);
+      if (apply === 'renewal') await renewSuccess(subscriptionId, paymobOrderId, transactionId, plan, tx);
+    });
+    return true;
+  } catch (err) {
+    if (err.code === 'P2002') return false;
+    throw err;
+  }
+}
+
 async function findPaymentByTransactionId(transactionId) {
   return prisma.payment.findUnique({ where: { transactionId: String(transactionId) } });
 }
 
-async function renewSuccess(subscriptionId, orderId, transactionId, plan) {
+async function renewSuccess(subscriptionId, orderId, transactionId, plan, db = prisma) {
   const days = planDays(plan);
 
   // Advance from the current nextRenewalDate, not from today, to prevent drift.
   // If the current renewal date is in the past (late charge), still advance from it.
-  const sub = await prisma.subscription.findUnique({ where: { id: subscriptionId } });
+  const sub = await db.subscription.findUnique({ where: { id: subscriptionId } });
   const baseDate = sub.nextRenewalDate && sub.nextRenewalDate <= new Date()
     ? midnightUTCAfter(days, sub.nextRenewalDate)
     : midnightUTCAfter(days);
 
-  return prisma.subscription.update({
+  return db.subscription.update({
     where: { id: subscriptionId },
     data: {
       lastPaymobOrder: String(orderId),
@@ -261,6 +282,7 @@ module.exports = {
   getSubscriptionById,
   logPayment,
   claimPayment,
+  recordPayment,
   findPaymentByTransactionId,
   renewSuccess,
   updatePaymobSubscription,
