@@ -115,7 +115,8 @@ const axios = require('axios');
 const calls = { intentions: [], suspended: [], dispatched: [], plans: [], amounts: [] };
 // Paymob subscriptions that exist on the fake Paymob side, found by the customer search
 const paymobSubs = [{ id: 777, state: 'active', client_info: { email: 'A@x.com' } }];
-const paymobFail = { put: 0 };
+const paymobFail = { put: 0, resume: 0 };
+const paymobTx = {}; // paymob subscription id -> transaction ids
 const PAYMOB_FREQUENCIES = [7, 15, 30, 60, 90, 180, 360]; // 365 is NOT one of them
 let orderSeq = 5000;
 
@@ -135,10 +136,23 @@ axios.post = async (url, body) => {
     return { data: { id: 8000 + calls.plans.length } };
   }
   if (url.includes('/suspend')) { calls.suspended.push(url); return { data: {} }; }
+  if (url.includes('/resume')) {
+    if (paymobFail.resume > 0) { paymobFail.resume--; throw new Error('Paymob unavailable'); }
+    (calls.resumed = calls.resumed || []).push(url);
+    return { data: {} };
+  }
   if (url.includes('hook.test')) { calls.dispatched.push(JSON.parse(body).event); return { data: {} }; }
   throw new Error('unexpected POST ' + url);
 };
 axios.get = async (url) => {
+  const one = url.match(/\/acceptance\/subscriptions\/(\d+)(\/transactions)?$/);
+  if (one) {
+    const id = Number(one[1]);
+    if (one[2]) return { data: { results: (paymobTx[id] || []).map((t) => ({ id: t })) } };
+    const found = paymobSubs.find((x) => x.id === id);
+    if (!found) throw Object.assign(new Error('404'), { response: { status: 404, data: { detail: 'Not found.' } } });
+    return { data: found };
+  }
   if (url.includes('/acceptance/subscriptions')) {
     return { data: { results: paymobSubs, next: null } };
   }
@@ -151,6 +165,8 @@ axios.put = async (url, body) => {
   if (m) {
     if (paymobFail.put > 0) { paymobFail.put--; throw new Error('Paymob unavailable'); }
     calls.amounts.push({ id: Number(m[1]), amount: body.amount_cents });
+    const target = paymobSubs.find((x) => x.id === Number(m[1]));
+    if (target) target.amount_cents = body.amount_cents;
     return { data: { id: Number(m[1]), amount_cents: body.amount_cents } };
   }
   throw new Error('unexpected PUT ' + url);
@@ -422,7 +438,7 @@ async function test(name, fn) {
 
   await test('"first payment only": renewals stay full price, Paymob amount never touched', async () => {
     await coupon({ code: 'FIRST20', discountType: 'percentage', discountValue: 20, appliesTo: 'first_payment' });
-    paymobSubs.push({ id: 801, state: 'active', client_info: { email: 'first@x.com' } });
+    paymobSubs.push({ id: 801, state: 'active', initial_transaction: txId + 1, client_info: { email: 'first@x.com' } });
     const n = calls.amounts.length;
     const res = await call('POST', '/api/payment/create', { ...pay, email: 'first@x.com', couponCode: 'FIRST20' });
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
@@ -436,7 +452,7 @@ async function test(name, fn) {
 
   await test('"first payment + 2 renewals": Paymob set to discounted price, back to full after the 2nd renewal', async () => {
     await coupon({ code: 'TWO20', discountType: 'percentage', discountValue: 20, appliesTo: 'renewals', renewalCount: 2 });
-    paymobSubs.push({ id: 802, state: 'active', client_info: { email: 'two@x.com' } });
+    paymobSubs.push({ id: 802, state: 'active', initial_transaction: txId + 1, client_info: { email: 'two@x.com' } });
     const res = await call('POST', '/api/payment/create', { ...pay, email: 'two@x.com', couponCode: 'TWO20' });
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(calls.intentions.at(-1).amount, 120000);
@@ -470,7 +486,7 @@ async function test(name, fn) {
 
   await test('"every renewal": discounted forever, never switched back', async () => {
     await coupon({ code: 'ALL10', discountType: 'percentage', discountValue: 10, appliesTo: 'all_renewals' });
-    paymobSubs.push({ id: 803, state: 'active', client_info: { email: 'all@x.com' } });
+    paymobSubs.push({ id: 803, state: 'active', initial_transaction: txId + 1, client_info: { email: 'all@x.com' } });
     await call('POST', '/api/payment/create', { ...pay, email: 'all@x.com', couponCode: 'ALL10' });
     await tx(++txId, orderSeq, 135000, true, 'all@x.com');
     const s = db.subscription.find((x) => x.email === 'all@x.com');
@@ -481,7 +497,7 @@ async function test(name, fn) {
 
   await test('if Paymob refuses the price change, the payment still activates and the daily job fixes it', async () => {
     await coupon({ code: 'RETRY', discountType: 'percentage', discountValue: 50, appliesTo: 'renewals', renewalCount: 1 });
-    paymobSubs.push({ id: 804, state: 'active', client_info: { email: 'flaky@x.com' } });
+    paymobSubs.push({ id: 804, state: 'active', initial_transaction: txId + 1, client_info: { email: 'flaky@x.com' } });
     await call('POST', '/api/payment/create', { ...pay, email: 'flaky@x.com', couponCode: 'RETRY' });
     paymobFail.put = 1;
     const res = await tx(++txId, orderSeq, 75000, true, 'flaky@x.com');
@@ -499,6 +515,68 @@ async function test(name, fn) {
     assert.strictEqual(bad.status, 400);
     const legacy = db.coupon.find((c) => c.code === 'ALL10');
     assert.deepStrictEqual([legacy.appliesTo, legacy.renewalCount], ['renewals', null]);
+  });
+
+
+  await test('linking never picks an OLD Paymob subscription of the same customer', async () => {
+    await coupon({ code: 'OLD30', discountType: 'percentage', discountValue: 30, appliesTo: 'renewals', renewalCount: 1 });
+    // the customer's previous (suspended) subscription on the same plan
+    paymobSubs.push({ id: 805, state: 'suspended', initial_transaction: 1, client_info: { email: 'again@x.com' } });
+    await call('POST', '/api/payment/create', { ...pay, email: 'again@x.com', couponCode: 'OLD30' });
+    const s = db.subscription.find((x) => x.email === 'again@x.com');
+    await tx(++txId, orderSeq, 105000, true, 'again@x.com');
+    assert.strictEqual(s.paymobSubscriptionId ?? null, null, 'not linked to the old one');
+    assert.strictEqual(calls.amounts.filter((a) => a.id === 805).length, 0);
+    // Paymob creates the new one and tells us → linked and discounted
+    paymobSubs.push({ id: 806, state: 'active', initial_transaction: txId, client_info: { email: 'again@x.com' } });
+    await subHook('created', { id: 806, plan_id: monthlyPlanId, initial_transaction: txId, client_info: { email: 'again@x.com' } });
+    assert.strictEqual(s.paymobSubscriptionId, 806);
+    assert.deepStrictEqual(calls.amounts.filter((a) => a.id === 806), [{ id: 806, amount: 105000 }]);
+  });
+
+  await test('a renewal charged at FULL price while a discount was due keeps the discount and is flagged', async () => {
+    const s = db.subscription.find((x) => x.email === 'again@x.com');
+    assert.strictEqual(s.discountedRenewalsLeft, 1);
+    paymobSubs.find((x) => x.id === 806).amount_cents = 150000; // someone changed it on Paymob
+    due(s); await tx(++txId, ++orderNo, 150000, true, 'again@x.com');
+    assert.strictEqual(s.discountedRenewalsLeft, 1, 'discount not used up');
+    assert.ok(/refund the difference/.test(db.payment.find((x) => x.transactionId === String(txId)).failReason));
+    const fixed = await require(r('src/services/renewal-discount.service.js')).syncAll();
+    assert.ok(fixed.synced >= 1);
+    assert.strictEqual(paymobSubs.find((x) => x.id === 806).amount_cents, 105000, 'daily job reads Paymob and restores the discount');
+  });
+
+  await test('a renewal is matched by asking Paymob when two subscriptions share email and amount', async () => {
+    const a = db.subscription.find((x) => x.email === 'again@x.com');
+    // a second active subscription for the same email, same price
+    await call('POST', '/api/payment/create', { ...pay, email: 'again@x.com', plan: 'monthly' }).catch(() => {});
+    const second = { ...a, id: 9999, paymobSubscriptionId: 807, lastPaymobOrder: 'x', discountedRenewalsLeft: null, renewalDiscountCents: null, paymobAmountCents: null };
+    db.subscription.push(second);
+    paymobTx[807] = ['7777'];
+    second.nextRenewalDate = new Date(Date.now() - 3600e3);
+    await tx(7777, ++orderNo, 105000, true, 'again@x.com');
+    assert.strictEqual(db.payment.find((x) => x.transactionId === '7777').subscriptionId, 9999);
+    db.subscription.splice(db.subscription.indexOf(second), 1);
+  });
+
+  await test('undo cancel resumes the subscription on Paymob', async () => {
+    const s = db.subscription.find((x) => x.email === 'two@x.com');
+    s.nextRenewalDate = new Date(Date.now() + 10 * 864e5);
+    const c = await call('POST', `/api/subscriptions/${s.id}/cancel`, null, { Authorization: admin });
+    assert.strictEqual(c.status, 200, JSON.stringify(c.body));
+    const u = await call('POST', `/api/subscriptions/${s.id}/reactivate`, null, { Authorization: admin });
+    assert.strictEqual(u.status, 200, JSON.stringify(u.body));
+    assert.ok((calls.resumed || []).some((x) => x.includes('/802/resume')));
+    assert.strictEqual(s.cancelledAt, null);
+  });
+
+  await test('if Paymob refuses to resume, the cancellation is kept (no silent free access)', async () => {
+    const s = db.subscription.find((x) => x.email === 'two@x.com');
+    await call('POST', `/api/subscriptions/${s.id}/cancel`, null, { Authorization: admin });
+    paymobFail.resume = 1;
+    const u = await call('POST', `/api/subscriptions/${s.id}/reactivate`, null, { Authorization: admin });
+    assert.strictEqual(u.status, 502);
+    assert.ok(s.cancelledAt, 'still cancel-pending');
   });
 
   server.close();

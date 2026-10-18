@@ -19,14 +19,29 @@ function desiredRenewalAmount(sub) {
   return stillDiscounted ? Math.max(100, sub.fullPriceCents - sub.renewalDiscountCents) : sub.fullPriceCents;
 }
 
-/** Make the Paymob subscription charge desiredRenewalAmount. Returns true when in sync. */
-async function syncRenewalAmount(sub) {
+/**
+ * Make the Paymob subscription charge desiredRenewalAmount. Returns true when in sync.
+ * verify: read the amount from Paymob instead of trusting the one we last set.
+ */
+async function syncRenewalAmount(sub, { verify = false } = {}) {
   const target = desiredRenewalAmount(sub);
-  if (target === null || sub.status !== 'active' && sub.status !== 'pending') return true;
+  // Nothing to renew: cancelled, or cancel requested (suspended on Paymob)
+  if (target === null || sub.cancelledAt || (sub.status !== 'active' && sub.status !== 'pending')) return true;
   if (!sub.paymobSubscriptionId) return false;
-  if (sub.paymobAmountCents === target) return true;
 
   const authToken = await paymobService.authenticate();
+  if (verify) {
+    const live = await paymobService.getSubscription(authToken, sub.paymobSubscriptionId);
+    if (live.amount_cents === target) {
+      if (sub.paymobAmountCents !== target) {
+        await prisma.subscription.update({ where: { id: sub.id }, data: { paymobAmountCents: target } });
+      }
+      return true;
+    }
+  } else if (sub.paymobAmountCents === target) {
+    return true;
+  }
+
   await paymobService.updateSubscriptionAmount(authToken, sub.paymobSubscriptionId, target);
   await prisma.subscription.update({ where: { id: sub.id }, data: { paymobAmountCents: target } });
   log('INFO', 'renewal-discount', `Sub #${sub.id}: renewals now ${target / 100}`, {
@@ -36,9 +51,9 @@ async function syncRenewalAmount(sub) {
 }
 
 /** Same as syncRenewalAmount, but never throws — failures are retried by the daily job. */
-async function trySync(sub, context) {
+async function trySync(sub, context, options) {
   try {
-    return await syncRenewalAmount(sub);
+    return await syncRenewalAmount(sub, options);
   } catch (err) {
     log('ERROR', 'renewal-discount', `Sub #${sub.id}: renewal amount not synced (${context}) — will retry daily`, {
       error: err.message,
@@ -54,9 +69,16 @@ async function trySync(sub, context) {
 async function linkIfMissing(sub) {
   if (sub.paymobSubscriptionId || desiredRenewalAmount(sub) === null) return sub;
   try {
+    // Match on the exact first-payment transaction, never just "latest for this email":
+    // an older subscription of the same customer on the same plan must not be picked.
+    const initial = await prisma.payment.findFirst({
+      where: { subscriptionId: sub.id, type: 'initial', status: 'success' },
+    });
+    if (!initial) return sub;
     const authToken = await paymobService.authenticate();
-    const [match] = await paymobService.findSubscriptionsForCustomer(authToken, sub);
-    if (!match) return sub;
+    const match = (await paymobService.findSubscriptionsForCustomer(authToken, sub))
+      .find((s) => String(s.initial_transaction) === String(initial.transactionId));
+    if (!match) return sub; // Paymob may not have created it yet — the webhook or daily job will link it
     const updated = await prisma.subscription.update({
       where: { id: sub.id },
       data: { paymobSubscriptionId: match.id },
@@ -77,7 +99,7 @@ async function syncAll() {
   let synced = 0;
   for (const sub of subs) {
     const linked = await linkIfMissing(sub);
-    if (await trySync(linked, 'daily')) synced++;
+    if (await trySync(linked, 'daily', { verify: true })) synced++;
   }
   return { checked: subs.length, synced };
 }

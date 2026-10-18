@@ -112,7 +112,7 @@ async function recordPayment({ payment, apply, paymentMethod, plan }) {
     await prisma.$transaction(async (tx) => {
       await tx.payment.create({ data: { ...payment, transactionId: String(transactionId) } });
       if (apply === 'initial') await activateSubscription(subscriptionId, transactionId, paymentMethod, tx);
-      if (apply === 'renewal') await renewSuccess(subscriptionId, paymobOrderId, transactionId, plan, tx);
+      if (apply === 'renewal') await renewSuccess(subscriptionId, paymobOrderId, transactionId, plan, tx, payment.amountCents);
     });
     return true;
   } catch (err) {
@@ -121,11 +121,15 @@ async function recordPayment({ payment, apply, paymentMethod, plan }) {
   }
 }
 
+async function notePayment(transactionId, failReason) {
+  return prisma.payment.update({ where: { transactionId: String(transactionId) }, data: { failReason } });
+}
+
 async function findPaymentByTransactionId(transactionId) {
   return prisma.payment.findUnique({ where: { transactionId: String(transactionId) } });
 }
 
-async function renewSuccess(subscriptionId, orderId, transactionId, plan, db = prisma) {
+async function renewSuccess(subscriptionId, orderId, transactionId, plan, db = prisma, chargedCents = null) {
   const days = planDays(plan);
 
   // Advance from the current nextRenewalDate, not from today, to prevent drift.
@@ -135,9 +139,14 @@ async function renewSuccess(subscriptionId, orderId, transactionId, plan, db = p
     ? midnightUTCAfter(days, sub.nextRenewalDate)
     : midnightUTCAfter(days);
 
-  // This renewal used up one discounted renewal (if any were left)
+  // This renewal used up one discounted renewal — only if it really was charged at a discount.
+  // (If Paymob charged full price, e.g. the price change had not reached Paymob yet, the
+  // customer keeps all their discounted renewals.)
   const left = sub.discountedRenewalsLeft;
-  const countDown = sub.renewalDiscountCents && left !== null && left > 0 ? { discountedRenewalsLeft: left - 1 } : {};
+  const wasDiscounted = chargedCents === null || !sub.fullPriceCents || chargedCents < sub.fullPriceCents;
+  const countDown = sub.renewalDiscountCents && left !== null && left > 0 && wasDiscounted
+    ? { discountedRenewalsLeft: left - 1 }
+    : {};
 
   return db.subscription.update({
     where: { id: subscriptionId },
@@ -236,7 +245,15 @@ async function reactivateSubscription(subscriptionId) {
   if (!sub) throw new Error('Subscription not found');
   // Allow reactivation for: cancelled subs, or active subs with pending cancellation
   if (sub.status === 'active' && sub.cancelledAt) {
-    // Undo cancel — just clear cancelledAt, keep existing nextRenewalDate
+    // Undo cancel. Cancel suspended the Paymob subscription, so it must be resumed there too —
+    // otherwise the customer stays "active" here but is never charged again.
+    if (sub.paymobSubscriptionId) {
+      const paymobService = require('./paymob.service');
+      const authToken = await paymobService.authenticate();
+      await paymobService.resumeSubscription(authToken, sub.paymobSubscriptionId);
+    } else if (sub.paymobPlanId) {
+      throw new Error('Cannot reactivate: this subscription is not linked to Paymob. Use "Sync Paymob" first or resume it on the Paymob dashboard.');
+    }
     return prisma.subscription.update({
       where: { id: subscriptionId },
       data: { cancelledAt: null },
@@ -291,6 +308,7 @@ module.exports = {
   logPayment,
   claimPayment,
   recordPayment,
+  notePayment,
   findPaymentByTransactionId,
   renewSuccess,
   updatePaymobSubscription,

@@ -118,6 +118,9 @@ router.post('/:id/reactivate', requireAuthOrApiKey('subscriptions:write'), async
     if (err.message.includes('Cannot reactivate')) {
       return res.status(400).json({ error: err.message });
     }
+    if (err.message.includes('Paymob resumeSubscription failed')) {
+      return res.status(502).json({ error: 'Paymob refused to resume the subscription, so the cancellation was kept. ' + err.message });
+    }
     if (err.message.includes('not found') || err.code === 'P2025') {
       return res.status(404).json({ error: 'Subscription not found' });
     }

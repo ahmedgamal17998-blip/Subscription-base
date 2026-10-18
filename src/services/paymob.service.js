@@ -146,6 +146,38 @@ async function updateSubscriptionAmount(authToken, subscriptionId, amountCents) 
   }
 }
 
+async function resumeSubscription(authToken, subscriptionId) {
+  try {
+    const res = await axios.post(
+      `${BASE_URL}/acceptance/subscriptions/${subscriptionId}/resume`,
+      {},
+      { headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' } }
+    );
+    log('INFO', 'paymob', 'Paymob subscription resumed', { subscriptionId });
+    return res.data;
+  } catch (err) {
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    log('ERROR', 'paymob', 'Paymob resumeSubscription failed', { subscriptionId, error: detail });
+    throw new Error(`Paymob resumeSubscription failed: ${detail}`);
+  }
+}
+
+async function getSubscription(authToken, subscriptionId) {
+  const res = await axios.get(`${BASE_URL}/acceptance/subscriptions/${subscriptionId}`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  return res.data;
+}
+
+// IDs of every transaction Paymob made for one subscription (initial + renewals)
+async function listSubscriptionTransactionIds(authToken, subscriptionId) {
+  const res = await axios.get(`${BASE_URL}/acceptance/subscriptions/${subscriptionId}/transactions`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  const list = res.data?.results || res.data || [];
+  return list.map((t) => String(t.id));
+}
+
 async function suspendForSubscription(sub) {
   const authToken = await authenticate();
   if (sub.paymobSubscriptionId) {
@@ -206,6 +238,9 @@ module.exports = {
   suspendSubscription,
   searchSubscriptionsByPlan,
   suspendForSubscription,
+  resumeSubscription,
+  getSubscription,
+  listSubscriptionTransactionIds,
   findSubscriptionsForCustomer,
   updateSubscriptionAmount,
   listSubscriptionPlans,

@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { verifyHmac } = require('../middleware/hmac.middleware');
+const paymobService = require('../services/paymob.service');
 const prisma = require('../db');
 const subscriptionService = require('../services/subscription.service');
 const { dispatchForSubscription } = require('../services/webhook-dispatch.service');
@@ -17,6 +18,35 @@ const router = express.Router();
 // this limit only guards against floods.
 const webhookLimiter = rateLimit({ windowMs: 1 * 60 * 1000, limit: 6000, message: { error: 'Too many requests' } });
 router.use(webhookLimiter);
+
+/**
+ * Which active subscription does a renewal charge belong to?
+ * One active subscription for the email → that one. Several → narrow by the amounts each one
+ * can be charged (with coupons the renewal amount differs from the first payment), and if still
+ * ambiguous ask Paymob which subscription made this transaction. Never guesses.
+ */
+async function findRenewalSubscription(email, amountCents, transactionId, orderId) {
+  const actives = await subscriptionService.findAllActiveByEmail(email);
+  if (actives.length <= 1) return actives[0] || null;
+
+  const byAmount = actives.filter((s) =>
+    [s.paymobAmountCents, s.fullPriceCents, s.amountCents].includes(amountCents));
+  if (byAmount.length === 1) return byAmount[0];
+
+  try {
+    const authToken = await paymobService.authenticate();
+    for (const s of actives.filter((x) => x.paymobSubscriptionId)) {
+      const ids = await paymobService.listSubscriptionTransactionIds(authToken, s.paymobSubscriptionId);
+      if (ids.includes(String(transactionId))) return s;
+    }
+  } catch (err) {
+    log('WARN', 'webhook', 'Could not ask Paymob which subscription renewed', { error: err.message });
+  }
+  log('ERROR', 'webhook', 'Ambiguous renewal — several active subscriptions for this email', {
+    orderId, transactionId, email, amountCents, subIds: actives.map((a) => a.id),
+  });
+  return null;
+}
 
 // ── Transaction Webhook (from Paymob) ────────────────────────────────────────
 router.post('/paymob', verifyHmac, async (req, res) => {
@@ -49,22 +79,9 @@ router.post('/paymob', verifyHmac, async (req, res) => {
     const matchedByOrder = !!sub;
 
     if (!sub) {
+      // Renewal: Paymob's renewal transaction carries the customer email but no subscription ID
       const email = obj.order?.shipping_data?.email?.toLowerCase();
-      if (email) {
-        sub = await subscriptionService.findActiveByEmailAndAmount(email, amountCents);
-        if (!sub) {
-          // Only fall back to email alone when it is unambiguous — never guess between products
-          const actives = await subscriptionService.findAllActiveByEmail(email);
-          if (actives.length === 1) {
-            sub = actives[0];
-            log('WARN', 'webhook', 'Found by email-only fallback — verify manually', { orderId, email, subId: sub.id });
-          } else if (actives.length > 1) {
-            log('ERROR', 'webhook', 'Ambiguous renewal — several active subscriptions for this email', {
-              orderId, transactionId, email, amountCents, subIds: actives.map((a) => a.id),
-            });
-          }
-        }
-      }
+      if (email) sub = await findRenewalSubscription(email, amountCents, transactionId, orderId);
     }
 
     if (!sub) {
@@ -86,10 +103,13 @@ router.post('/paymob', verifyHmac, async (req, res) => {
       const renewalDate = sub.nextRenewalDate ? new Date(sub.nextRenewalDate) : null;
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+      // Money taken for a subscription that should not renew must be refunded, not just ignored
       if (sub.status !== 'active') {
-        ignoreReason = `Ignored: subscription status is ${sub.status}`;
+        ignoreReason = `Charged although subscription is ${sub.status} — refund in Paymob`;
+        needsRefund = success;
       } else if (sub.cancelledAt) {
-        ignoreReason = 'Ignored: subscription is pending cancellation';
+        ignoreReason = 'Charged although cancellation was requested — refund in Paymob';
+        needsRefund = success;
       } else if (renewalDate && renewalDate > tomorrow) {
         // Charge before the period ended (e.g. Paymob's immediate first-cycle deduction on
         // subscriptions created without a start date). The customer paid twice.
@@ -135,6 +155,14 @@ router.post('/paymob', verifyHmac, async (req, res) => {
     // once the discounted renewals are used up
     if (success && renewalDiscount.desiredRenewalAmount(updatedSub) !== null) {
       if (type === 'initial') updatedSub = await renewalDiscount.linkIfMissing(updatedSub);
+      if (type === 'renewal' && sub.fullPriceCents && amountCents >= sub.fullPriceCents
+          && (sub.discountedRenewalsLeft === null || sub.discountedRenewalsLeft > 0)) {
+        // A discount was due but Paymob charged full price — keep the discount for the next
+        // renewal and flag this one so the difference can be refunded
+        const note = `Charged full price; coupon discount of ${sub.renewalDiscountCents / 100} was due — refund the difference`;
+        await subscriptionService.notePayment(transactionId, note);
+        log('ERROR', 'webhook', `Sub #${sub.id}: ${note}`, { transactionId, amountCents });
+      }
       await renewalDiscount.trySync(updatedSub, type);
       updatedSub = await subscriptionService.getSubscriptionById(sub.id);
     }
