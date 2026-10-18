@@ -6,6 +6,7 @@ const prisma = require('../db');
 const subscriptionService = require('../services/subscription.service');
 const { dispatchForSubscription } = require('../services/webhook-dispatch.service');
 const couponService = require('../services/coupon.service');
+const renewalDiscount = require('../services/renewal-discount.service');
 const config = require('../config');
 const { log } = require('../utils/logger');
 
@@ -128,7 +129,16 @@ router.post('/paymob', verifyHmac, async (req, res) => {
         log('WARN', 'webhook', 'Coupon usage not counted', { code: sub.couponCode, error: err.message }));
     }
 
-    const updatedSub = await subscriptionService.getSubscriptionById(sub.id);
+    let updatedSub = await subscriptionService.getSubscriptionById(sub.id);
+
+    // Coupon discounts on renewals: apply on the first payment, switch back to full price
+    // once the discounted renewals are used up
+    if (success && renewalDiscount.desiredRenewalAmount(updatedSub) !== null) {
+      if (type === 'initial') updatedSub = await renewalDiscount.linkIfMissing(updatedSub);
+      await renewalDiscount.trySync(updatedSub, type);
+      updatedSub = await subscriptionService.getSubscriptionById(sub.id);
+    }
+
     const eventName = `${type === 'renewal' ? 'renewal' : 'payment'}_${success ? 'success' : 'failed'}`;
     await dispatchForSubscription(eventName, updatedSub, {
       type,
@@ -137,7 +147,12 @@ router.post('/paymob', verifyHmac, async (req, res) => {
       amount: amountCents / 100,
       transaction_id: transactionId,
       ...(success
-        ? { coupon_code: updatedSub.couponCode || null, discount_cents: updatedSub.discountCents || 0 }
+        ? {
+          coupon_code: updatedSub.couponCode || null,
+          discount_cents: updatedSub.discountCents || 0,
+          renewal_discount_cents: updatedSub.renewalDiscountCents || 0,
+          discounted_renewals_left: updatedSub.renewalDiscountCents ? updatedSub.discountedRenewalsLeft : 0,
+        }
         : { fail_reason: failReason || '' }),
     });
 
@@ -198,7 +213,7 @@ router.post('/paymob-subscription', async (req, res) => {
             where: {
               email,
               status: { in: ['active', 'pending'] },
-              paymobPlanId: String(subscription_data.plan_id),
+              paymobPlanId: Number(subscription_data.plan_id),
             },
             orderBy: { createdAt: 'desc' },
             include: { product: true },
@@ -227,6 +242,8 @@ router.post('/paymob-subscription', async (req, res) => {
           nextRenewalDate: firstDeduction || undefined,
         });
         log('INFO', 'sub-webhook', `Subscription #${sub.id} linked to Paymob sub ${subscription_data.id}`);
+        const linked = await subscriptionService.getSubscriptionById(sub.id);
+        await renewalDiscount.trySync(linked, 'linked');
       }
     } else if (trigger_type === 'suspended') {
       const sub = await subscriptionService.findByPaymobSubscriptionId(subscription_data.id);

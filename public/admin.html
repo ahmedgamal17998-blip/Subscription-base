@@ -825,12 +825,19 @@ tr:hover td{background:#fafbfc}
           </div>
           <div class="form-group"><label>Value *</label><input type="number" id="cf-value" step="0.01" min="0" required></div>
         </div>
-        <div class="form-group"><label>Applies To</label>
-          <select id="cf-applies">
-            <option value="first_payment">First Payment Only</option>
-            <option value="all_renewals">All Renewals</option>
-          </select>
+        <div class="form-row">
+          <div class="form-group"><label>Applies To</label>
+            <select id="cf-applies" onchange="onCouponScopeChange()">
+              <option value="first_payment">First payment only</option>
+              <option value="renewals_count">First payment + a number of renewals</option>
+              <option value="renewals_all">First payment + every renewal</option>
+            </select>
+          </div>
+          <div class="form-group" id="cf-renewals-row" style="display:none"><label>Discounted renewals</label>
+            <input type="number" id="cf-renewals" min="1" max="120" step="1" placeholder="e.g. 2" oninput="onCouponScopeChange()">
+          </div>
         </div>
+        <p id="cf-scope-hint" style="font-size:12px;color:#64748b;margin:-6px 0 12px"></p>
         <div class="form-row">
           <div class="form-group"><label>Max Uses (blank = unlimited)</label><input type="number" id="cf-max-uses" min="1"></div>
           <div class="form-group"><label>Expiry Date (optional)</label><input type="date" id="cf-expiry"></div>
@@ -1949,11 +1956,11 @@ async function loadCoupons() {
         const id = c._id || c.id;
         const type = c.discountType || c.type || 'percentage';
         const discVal = c.discountValue ?? c.value;
-        const val = type === 'percentage' ? discVal + '%' : fmt(discVal || 0);
+        const val = type === 'percentage' ? discVal + '%' : 'EGP ' + Number(discVal || 0).toFixed(2);
         const expiresAt = c.expiresAt || c.expiryDate;
         const isActive = c.isActive !== undefined ? c.isActive : c.active !== false;
         const cJson = escAttr(JSON.stringify(c));
-        return '<tr><td><strong>' + escAttr(c.code) + '</strong></td><td><span class="badge badge-blue">' + type + '</span></td><td>' + val + '</td><td><span class="badge badge-gray">' + escAttr(c.appliesTo || 'first_payment') + '</span></td><td>' + (c.usedCount || 0) + (c.maxUses ? '/' + c.maxUses : '') + '</td><td>' + (expiresAt ? fmtDate(expiresAt) : 'Never') + '</td><td>' + escAttr(c.productName || 'All') + '</td><td>' + statusBadge(isActive ? 'active' : 'expired') + '</td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick=\'editCouponById(' + cJson + ')\'>Edit</button><button class="btn btn-danger btn-sm" onclick="deleteCoupon(\'' + id + '\')">Delete</button></div></td></tr>';
+        return '<tr><td><strong>' + escAttr(c.code) + '</strong></td><td><span class="badge badge-blue">' + type + '</span></td><td>' + val + '</td><td><span class="badge badge-gray">' + escAttr(couponScopeLabel(c)) + '</span></td><td>' + (c.usedCount || 0) + (c.maxUses ? '/' + c.maxUses : '') + '</td><td>' + (expiresAt ? fmtDate(expiresAt) : 'Never') + '</td><td>' + escAttr(c.productName || 'All') + '</td><td>' + statusBadge(isActive ? 'active' : 'expired') + '</td><td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick=\'editCouponById(' + cJson + ')\'>Edit</button><button class="btn btn-danger btn-sm" onclick="deleteCoupon(\'' + id + '\')">Delete</button></div></td></tr>';
       }).join('') + '</tbody></table></div>';
   } catch (e) { wrap.innerHTML = '<div class="loading-state" style="color:#ef4444">Error: ' + e.message + '</div>'; }
 }
@@ -1965,7 +1972,10 @@ function openCouponModal(c) {
   document.getElementById('cf-code').value = c?.code || '';
   document.getElementById('cf-type').value = c?.type || c?.discountType || 'percentage';
   document.getElementById('cf-value').value = c?.discountValue ?? c?.value ?? '';
-  document.getElementById('cf-applies').value = c?.appliesTo || 'first_payment';
+  const isRenewals = c?.appliesTo === 'renewals' || c?.appliesTo === 'all_renewals';
+  document.getElementById('cf-applies').value = !isRenewals ? 'first_payment' : (c.renewalCount ? 'renewals_count' : 'renewals_all');
+  document.getElementById('cf-renewals').value = c?.renewalCount || '';
+  onCouponScopeChange();
   document.getElementById('cf-max-uses').value = c?.maxUses || '';
   const expiresAt = c?.expiresAt || c?.expiryDate;
   document.getElementById('cf-expiry').value = expiresAt ? expiresAt.substring(0, 10) : '';
@@ -1976,12 +1986,33 @@ function openCouponModal(c) {
 
 function editCouponById(c) { openCouponModal(c); }
 
+function onCouponScopeChange() {
+  const scope = document.getElementById('cf-applies').value;
+  document.getElementById('cf-renewals-row').style.display = scope === 'renewals_count' ? '' : 'none';
+  const n = parseInt(document.getElementById('cf-renewals').value) || 'N';
+  document.getElementById('cf-scope-hint').textContent = {
+    first_payment: 'Discount on the first payment; renewals are charged the full price.',
+    renewals_count: `Discount on the first payment and the next ${n} renewal(s); after that renewals return to full price automatically.`,
+    renewals_all: 'Discount on the first payment and every renewal for the life of the subscription.',
+  }[scope];
+}
+
+function couponScopeLabel(c) {
+  if (c.appliesTo === 'renewals' || c.appliesTo === 'all_renewals') {
+    return c.renewalCount ? `1st + ${c.renewalCount} renewal${c.renewalCount > 1 ? 's' : ''}` : '1st + all renewals';
+  }
+  return '1st payment only';
+}
+
 async function saveCoupon() {
   const code = document.getElementById('cf-code').value.trim();
   const value = parseFloat(document.getElementById('cf-value').value);
   if (!code || isNaN(value)) { toast('Code and value are required', 'error'); return; }
   const type = document.getElementById('cf-type').value;
-  const payload = { code, discountType: type, discountValue: value, appliesTo: document.getElementById('cf-applies').value, maxUses: document.getElementById('cf-max-uses').value ? parseInt(document.getElementById('cf-max-uses').value) : null, expiresAt: document.getElementById('cf-expiry').value || null, productId: document.getElementById('cf-product').value || null, isActive: document.getElementById('cf-active').checked };
+  const scope = document.getElementById('cf-applies').value;
+  const renewals = parseInt(document.getElementById('cf-renewals').value);
+  if (scope === 'renewals_count' && !(renewals >= 1)) { toast('Enter how many renewals get the discount', 'error'); return; }
+  const payload = { code, discountType: type, discountValue: value, appliesTo: scope === 'first_payment' ? 'first_payment' : 'renewals', renewalCount: scope === 'renewals_count' ? renewals : null, maxUses: document.getElementById('cf-max-uses').value ? parseInt(document.getElementById('cf-max-uses').value) : null, expiresAt: document.getElementById('cf-expiry').value || null, productId: document.getElementById('cf-product').value || null, isActive: document.getElementById('cf-active').checked };
   const btn = document.getElementById('coupon-save-btn');
   btn.disabled = true;
   try {

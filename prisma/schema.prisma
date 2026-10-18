@@ -122,6 +122,10 @@ model Subscription {
   productId              Int?
   couponCode             String?   // coupon used at subscription time
   discountCents          Int?      // discount applied (in cents)
+  fullPriceCents         Int?      // plan list price at checkout (renewal price without discount)
+  renewalDiscountCents   Int?      // discount on each discounted renewal (null = renewals at full price)
+  discountedRenewalsLeft Int?      // discounted renewals still to come (null = all renewals)
+  paymobAmountCents      Int?      // renewal amount we last set on the Paymob subscription
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -156,8 +160,9 @@ model Coupon {
   id            Int       @id @default(autoincrement())
   code          String    @unique
   discountType  String    // percentage | fixed
-  discountValue Float     // percentage (0-100) or amount in cents
-  appliesTo     String    @default("first_payment") // first_payment | all_renewals
+  discountValue Float     // percentage (0-100) or fixed amount in EGP
+  appliesTo     String    @default("first_payment") // first_payment | renewals (legacy: all_renewals)
+  renewalCount  Int?      // with appliesTo=renewals: how many renewals get the discount (null = all)
   maxUses       Int?      // null = unlimited
   usedCount     Int       @default(0)
   expiresAt     DateTime?

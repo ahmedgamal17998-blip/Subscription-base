@@ -113,17 +113,46 @@ async function searchSubscriptionsByPlan(authToken, planId) {
  * Uses the stored Paymob ID, or finds it by plan + email when the ID was never linked.
  * Returns the Paymob subscription ID that was suspended, or null if none was found.
  */
+// Paymob subscriptions for this customer on this plan (newest first)
+async function findSubscriptionsForCustomer(authToken, sub) {
+  if (!sub.paymobPlanId) return [];
+  const email = sub.email.toLowerCase();
+  return (await searchSubscriptionsByPlan(authToken, sub.paymobPlanId))
+    .filter((s) => (s.client_info?.email || '').toLowerCase() === email)
+    .sort((a, b) => b.id - a.id);
+}
+
+/**
+ * Set the amount Paymob charges on every future renewal of one subscription.
+ * Paymob deducts each renewal at the subscription's own amount_cents (editable per
+ * subscription, independent of the plan) — this is how coupon discounts reach renewals.
+ */
+async function updateSubscriptionAmount(authToken, subscriptionId, amountCents) {
+  try {
+    const res = await axios.put(
+      `${BASE_URL}/acceptance/subscriptions/${subscriptionId}`,
+      { amount_cents: amountCents },
+      { headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' } }
+    );
+    if (res.data?.amount_cents !== undefined && res.data.amount_cents !== amountCents) {
+      throw new Error(`Paymob kept amount ${res.data.amount_cents}`);
+    }
+    log('INFO', 'paymob', 'Paymob subscription renewal amount set', { subscriptionId, amountCents });
+    return res.data;
+  } catch (err) {
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    log('ERROR', 'paymob', 'Paymob updateSubscriptionAmount failed', { subscriptionId, amountCents, error: detail });
+    throw new Error(`Paymob updateSubscriptionAmount failed: ${detail}`);
+  }
+}
+
 async function suspendForSubscription(sub) {
   const authToken = await authenticate();
   if (sub.paymobSubscriptionId) {
     await suspendSubscription(authToken, sub.paymobSubscriptionId);
     return sub.paymobSubscriptionId;
   }
-  if (!sub.paymobPlanId) return null;
-
-  const email = sub.email.toLowerCase();
-  const matches = (await searchSubscriptionsByPlan(authToken, sub.paymobPlanId))
-    .filter((s) => (s.client_info?.email || '').toLowerCase() === email);
+  const matches = await findSubscriptionsForCustomer(authToken, sub);
   if (!matches.length) return null;
 
   for (const m of matches) {
@@ -177,6 +206,8 @@ module.exports = {
   suspendSubscription,
   searchSubscriptionsByPlan,
   suspendForSubscription,
+  findSubscriptionsForCustomer,
+  updateSubscriptionAmount,
   listSubscriptionPlans,
   createSubscriptionPlan,
 };

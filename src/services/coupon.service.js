@@ -21,11 +21,25 @@ async function evaluateCoupon(code, productId, amountCents) {
     return { ok: false, status: 400, error: 'This coupon has reached its usage limit.' };
   }
 
+  // Fixed coupons are entered in EGP in the admin; amounts here are in cents
   const discountCents = coupon.discountType === 'percentage'
     ? Math.round((amountCents * coupon.discountValue) / 100)
-    : Math.round(coupon.discountValue);
+    : Math.round(coupon.discountValue * 100);
 
   return { ok: true, coupon, discountCents: Math.min(discountCents, amountCents) };
+}
+
+/**
+ * How a coupon treats renewals of a subscription:
+ *   { discounted: false }                 first payment only
+ *   { discounted: true, count: null }     every renewal
+ *   { discounted: true, count: N }        the first N renewals
+ */
+function renewalTerms(coupon) {
+  if (!coupon) return { discounted: false };
+  if (coupon.appliesTo === 'all_renewals') return { discounted: true, count: null }; // legacy value
+  if (coupon.appliesTo === 'renewals') return { discounted: true, count: coupon.renewalCount ?? null };
+  return { discounted: false };
 }
 
 // Paymob rejects amounts below 1 EGP.
@@ -39,4 +53,4 @@ async function recordUse(code) {
   await prisma.coupon.updateMany({ where: { code }, data: { usedCount: { increment: 1 } } });
 }
 
-module.exports = { evaluateCoupon, finalAmountAfterDiscount, recordUse };
+module.exports = { evaluateCoupon, finalAmountAfterDiscount, recordUse, renewalTerms };

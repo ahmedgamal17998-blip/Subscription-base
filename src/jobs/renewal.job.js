@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const subscriptionService = require('../services/subscription.service');
+const renewalDiscount = require('../services/renewal-discount.service');
 const { dispatchForSubscription } = require('../services/webhook-dispatch.service');
 const { log } = require('../utils/logger');
 
@@ -34,6 +35,14 @@ async function runCleanupJob() {
     }
   } catch (err) {
     log('ERROR', 'cleanup.job', 'Failed to process cancellations', { error: err.message });
+  }
+
+  // Re-sync coupon renewal prices on Paymob (repairs failed calls / lost webhooks)
+  try {
+    const result = await renewalDiscount.syncAll();
+    if (result.checked) log('INFO', 'cleanup.job', 'Renewal discounts synced', result);
+  } catch (err) {
+    log('ERROR', 'cleanup.job', 'Failed to sync renewal discounts', { error: err.message });
   }
 
   log('INFO', 'cleanup.job', 'Daily cleanup complete');

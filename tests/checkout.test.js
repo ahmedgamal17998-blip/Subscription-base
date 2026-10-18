@@ -32,6 +32,7 @@ const DEFAULTS = {
   product: { isActive: true, productType: 'subscription', walletEnabled: false },
   productPlan: { isActive: true, currency: 'EGP' },
   subscription: { status: 'pending', currency: 'EGP' },
+  coupon: { isActive: true, usedCount: 0, maxUses: null, appliesTo: 'first_payment', renewalCount: null },
 };
 
 function match(row, where = {}) {
@@ -58,7 +59,10 @@ function withIncludes(name, row) {
     out.payments = db.payment.filter((p) => p.subscriptionId === row.id);
   }
   if (name === 'productPlan') out.product = db.product.find((p) => p.id === row.productId);
-  if (name === 'product') out.plans = db.productPlan.filter((p) => p.productId === row.id);
+  if (name === 'product') {
+    out.plans = db.productPlan.filter((p) => p.productId === row.id);
+    out.settings = db.productSettings.find((s) => s.productId === row.id) || null;
+  }
   return out;
 }
 
@@ -108,7 +112,10 @@ require.cache[require.resolve(r('src/utils/logger.js'))] = { exports: { log: () 
 
 // ── fake Paymob + outbound webhooks ──────────────────────────────────────────
 const axios = require('axios');
-const calls = { intentions: [], suspended: [], dispatched: [], plans: [] };
+const calls = { intentions: [], suspended: [], dispatched: [], plans: [], amounts: [] };
+// Paymob subscriptions that exist on the fake Paymob side, found by the customer search
+const paymobSubs = [{ id: 777, state: 'active', client_info: { email: 'A@x.com' } }];
+const paymobFail = { put: 0 };
 const PAYMOB_FREQUENCIES = [7, 15, 30, 60, 90, 180, 360]; // 365 is NOT one of them
 let orderSeq = 5000;
 
@@ -133,12 +140,22 @@ axios.post = async (url, body) => {
 };
 axios.get = async (url) => {
   if (url.includes('/acceptance/subscriptions')) {
-    return { data: { results: [{ id: 777, state: 'active', client_info: { email: 'A@x.com' } }], next: null } };
+    return { data: { results: paymobSubs, next: null } };
   }
   throw new Error('unexpected GET ' + url);
 };
 
 // ── app ──────────────────────────────────────────────────────────────────────
+axios.put = async (url, body) => {
+  const m = url.match(/\/acceptance\/subscriptions\/(\d+)$/);
+  if (m) {
+    if (paymobFail.put > 0) { paymobFail.put--; throw new Error('Paymob unavailable'); }
+    calls.amounts.push({ id: Number(m[1]), amount: body.amount_cents });
+    return { data: { id: Number(m[1]), amount_cents: body.amount_cents } };
+  }
+  throw new Error('unexpected PUT ' + url);
+};
+
 const rlPath = require.resolve('express-rate-limit');
 const noLimit = () => (req, res, next) => next();
 require.cache[rlPath] = { exports: Object.assign(noLimit, { rateLimit: noLimit, default: noLimit }), loaded: true, id: rlPath };
@@ -151,6 +168,7 @@ app.use('/api/payment', require(r('src/routes/payment.routes.js')));
 app.use('/api/webhook', require(r('src/routes/webhook.routes.js')));
 app.use('/api/subscriptions', require(r('src/routes/subscription.routes.js')));
 app.use('/api/products', require(r('src/routes/product.routes.js')));
+app.use('/api/coupons', require(r('src/routes/coupon.routes.js')));
 
 const server = app.listen(0);
 const base = `http://127.0.0.1:${server.address().port}`;
@@ -381,6 +399,106 @@ async function test(name, fn) {
     await subHook('suspended', { id: 777 });
     assert.strictEqual(db.subscription[1].status, 'active');
     assert.ok(!calls.dispatched.includes('cancelled'));
+  });
+
+
+  // ── coupons on renewals ────────────────────────────────────────────────────
+  db.productSettings.push({ id: 1, productId: prod.id, couponsEnabled: true });
+  const due = (s) => { s.nextRenewalDate = new Date(Date.now() - 3600e3); };
+  const coupon = async (body) => {
+    const res = await call('POST', '/api/coupons', body, { Authorization: admin });
+    assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+    return res.body;
+  };
+  let txId = 2000;
+  let orderNo = 9000;
+
+  await test('fixed coupon is in EGP: 100 EGP off a 1,500 plan charges 1,400', async () => {
+    await coupon({ code: 'FIX100', discountType: 'fixed', discountValue: 100, appliesTo: 'first_payment' });
+    const res = await call('POST', '/api/payment/create', { ...pay, email: 'fix@x.com', couponCode: 'fix100' });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(calls.intentions.at(-1).amount, 140000);
+  });
+
+  await test('"first payment only": renewals stay full price, Paymob amount never touched', async () => {
+    await coupon({ code: 'FIRST20', discountType: 'percentage', discountValue: 20, appliesTo: 'first_payment' });
+    paymobSubs.push({ id: 801, state: 'active', client_info: { email: 'first@x.com' } });
+    const n = calls.amounts.length;
+    const res = await call('POST', '/api/payment/create', { ...pay, email: 'first@x.com', couponCode: 'FIRST20' });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(calls.intentions.at(-1).amount, 120000);
+    await tx(++txId, orderSeq, 120000, true, 'first@x.com');
+    const s = db.subscription.find((x) => x.email === 'first@x.com');
+    assert.strictEqual(s.status, 'active');
+    assert.strictEqual(s.renewalDiscountCents ?? null, null);
+    assert.strictEqual(calls.amounts.length, n, 'no Paymob amount change');
+  });
+
+  await test('"first payment + 2 renewals": Paymob set to discounted price, back to full after the 2nd renewal', async () => {
+    await coupon({ code: 'TWO20', discountType: 'percentage', discountValue: 20, appliesTo: 'renewals', renewalCount: 2 });
+    paymobSubs.push({ id: 802, state: 'active', client_info: { email: 'two@x.com' } });
+    const res = await call('POST', '/api/payment/create', { ...pay, email: 'two@x.com', couponCode: 'TWO20' });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(calls.intentions.at(-1).amount, 120000);
+    const s = db.subscription.find((x) => x.email === 'two@x.com');
+    assert.deepStrictEqual([s.fullPriceCents, s.renewalDiscountCents, s.discountedRenewalsLeft], [150000, 30000, 2]);
+
+    // first payment → linked by search, renewal price set to 1,200
+    await tx(++txId, orderSeq, 120000, true, 'two@x.com');
+    assert.deepStrictEqual(calls.amounts.filter((a) => a.id === 802), [{ id: 802, amount: 120000 }]);
+
+    // Paymob "created" arrives after — already in sync, no second call
+    await subHook('created', { id: 802, plan_id: monthlyPlanId, initial_transaction: txId, client_info: { email: 'two@x.com' } });
+    assert.strictEqual(calls.amounts.filter((a) => a.id === 802).length, 1);
+
+    // renewal 1 (discounted) → 1 left, nothing to change
+    due(s); await tx(++txId, ++orderNo, 120000, true, 'two@x.com');
+    assert.strictEqual(s.discountedRenewalsLeft, 1);
+    assert.strictEqual(calls.amounts.filter((a) => a.id === 802).length, 1);
+
+    // renewal 2 (last discounted) → 0 left, Paymob back to full price
+    due(s); await tx(++txId, ++orderNo, 120000, true, 'two@x.com');
+    assert.strictEqual(s.discountedRenewalsLeft, 0);
+    assert.deepStrictEqual(calls.amounts.filter((a) => a.id === 802).at(-1), { id: 802, amount: 150000 });
+
+    // renewal 3 (full price) → no further changes
+    const before = calls.amounts.length;
+    due(s); await tx(++txId, ++orderNo, 150000, true, 'two@x.com');
+    assert.strictEqual(calls.amounts.length, before);
+    assert.strictEqual(s.discountedRenewalsLeft, 0);
+  });
+
+  await test('"every renewal": discounted forever, never switched back', async () => {
+    await coupon({ code: 'ALL10', discountType: 'percentage', discountValue: 10, appliesTo: 'all_renewals' });
+    paymobSubs.push({ id: 803, state: 'active', client_info: { email: 'all@x.com' } });
+    await call('POST', '/api/payment/create', { ...pay, email: 'all@x.com', couponCode: 'ALL10' });
+    await tx(++txId, orderSeq, 135000, true, 'all@x.com');
+    const s = db.subscription.find((x) => x.email === 'all@x.com');
+    assert.strictEqual(s.discountedRenewalsLeft ?? null, null);
+    for (let i = 0; i < 3; i++) { due(s); await tx(++txId, ++orderNo, 135000, true, 'all@x.com'); }
+    assert.deepStrictEqual(calls.amounts.filter((a) => a.id === 803), [{ id: 803, amount: 135000 }]);
+  });
+
+  await test('if Paymob refuses the price change, the payment still activates and the daily job fixes it', async () => {
+    await coupon({ code: 'RETRY', discountType: 'percentage', discountValue: 50, appliesTo: 'renewals', renewalCount: 1 });
+    paymobSubs.push({ id: 804, state: 'active', client_info: { email: 'flaky@x.com' } });
+    await call('POST', '/api/payment/create', { ...pay, email: 'flaky@x.com', couponCode: 'RETRY' });
+    paymobFail.put = 1;
+    const res = await tx(++txId, orderSeq, 75000, true, 'flaky@x.com');
+    const s = db.subscription.find((x) => x.email === 'flaky@x.com');
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(s.status, 'active');
+    assert.strictEqual(calls.amounts.filter((a) => a.id === 804).length, 0);
+    const result = await require(r('src/services/renewal-discount.service.js')).syncAll();
+    assert.ok(result.checked >= 1);
+    assert.deepStrictEqual(calls.amounts.filter((a) => a.id === 804), [{ id: 804, amount: 75000 }]);
+  });
+
+  await test('coupon API rejects a bad renewal count and stores the legacy "all_renewals" as every renewal', async () => {
+    const bad = await call('POST', '/api/coupons', { code: 'BAD', discountType: 'percentage', discountValue: 5, appliesTo: 'renewals', renewalCount: 0 }, { Authorization: admin });
+    assert.strictEqual(bad.status, 400);
+    const legacy = db.coupon.find((c) => c.code === 'ALL10');
+    assert.deepStrictEqual([legacy.appliesTo, legacy.renewalCount], ['renewals', null]);
   });
 
   server.close();

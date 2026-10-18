@@ -41,7 +41,7 @@ async function abandonPendingByEmail(email, productId) {
   });
 }
 
-async function createPending({ name, email, phone, plan, amountCents, currency, lastPaymobOrder, paymobPlanId, productId, paymentMethod, couponCode, discountCents, isOneTime }) {
+async function createPending({ name, email, phone, plan, amountCents, currency, lastPaymobOrder, paymobPlanId, productId, paymentMethod, couponCode, discountCents, isOneTime, fullPriceCents, renewalDiscountCents, discountedRenewalsLeft }) {
   const { firstName, lastName } = splitName(name);
   // One-time payments use a short window (1 day) just for record keeping
   const nextRenewalDate = midnightUTCAfter(isOneTime ? 1 : planDays(plan));
@@ -55,6 +55,9 @@ async function createPending({ name, email, phone, plan, amountCents, currency, 
       paymentMethod: paymentMethod || null,
       couponCode: couponCode || null,
       discountCents: discountCents || null,
+      fullPriceCents: fullPriceCents ?? null,
+      renewalDiscountCents: renewalDiscountCents ?? null,
+      discountedRenewalsLeft: discountedRenewalsLeft ?? null,
     },
   });
 }
@@ -132,12 +135,17 @@ async function renewSuccess(subscriptionId, orderId, transactionId, plan, db = p
     ? midnightUTCAfter(days, sub.nextRenewalDate)
     : midnightUTCAfter(days);
 
+  // This renewal used up one discounted renewal (if any were left)
+  const left = sub.discountedRenewalsLeft;
+  const countDown = sub.renewalDiscountCents && left !== null && left > 0 ? { discountedRenewalsLeft: left - 1 } : {};
+
   return db.subscription.update({
     where: { id: subscriptionId },
     data: {
       lastPaymobOrder: String(orderId),
       lastTransactionId: String(transactionId),
       nextRenewalDate: baseDate,
+      ...countDown,
     },
   });
 }

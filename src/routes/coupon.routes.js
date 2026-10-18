@@ -13,6 +13,17 @@ const router = express.Router();
 const adminLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100 });
 const publicLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20 });
 
+// appliesTo: first_payment | renewals (+ renewalCount: number of discounted renewals, empty = all)
+function parseScope(appliesTo, renewalCount) {
+  const value = appliesTo === 'all_renewals' ? 'renewals' : (appliesTo || 'first_payment');
+  if (!['first_payment', 'renewals'].includes(value)) return { error: 'appliesTo must be "first_payment" or "renewals".' };
+  if (value === 'first_payment') return { appliesTo: value, renewalCount: null };
+  if (renewalCount === undefined || renewalCount === null || renewalCount === '') return { appliesTo: value, renewalCount: null };
+  const n = Number(renewalCount);
+  if (!Number.isInteger(n) || n < 1 || n > 120) return { error: 'renewalCount must be a whole number between 1 and 120.' };
+  return { appliesTo: value, renewalCount: n };
+}
+
 // ── Public: validate coupon ───────────────────────────────────────────────────
 router.post('/validate', publicLimiter, async (req, res) => {
   try {
@@ -32,6 +43,7 @@ router.post('/validate', publicLimiter, async (req, res) => {
       discountCents,
       finalAmount,
       appliesTo: coupon.appliesTo,
+      renewalCount: coupon.renewalCount ?? null,
     });
   } catch (err) {
     log('ERROR', 'coupons', 'Coupon validation error', { error: err.message });
@@ -56,6 +68,8 @@ router.get('/', adminLimiter, requireAdmin, async (req, res) => {
 router.post('/', adminLimiter, requireAdmin, async (req, res) => {
   try {
     const { code, discountType, discountValue, appliesTo, maxUses, expiresAt, productId } = req.body;
+    const scope = parseScope(appliesTo, req.body.renewalCount);
+    if (scope.error) return res.status(400).json({ error: scope.error });
 
     if (!code || !discountType || discountValue === undefined) {
       return res.status(400).json({ error: 'code, discountType, and discountValue are required.' });
@@ -75,7 +89,8 @@ router.post('/', adminLimiter, requireAdmin, async (req, res) => {
         code: code.trim().toUpperCase(),
         discountType,
         discountValue: parseFloat(discountValue),
-        appliesTo: appliesTo || 'first_payment',
+        appliesTo: scope.appliesTo,
+        renewalCount: scope.renewalCount,
         maxUses: maxUses ? parseInt(maxUses) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
         productId: productId ? parseInt(productId) : null,
@@ -98,7 +113,15 @@ router.put('/:id', adminLimiter, requireAdmin, async (req, res) => {
     const data = {};
     if (discountType) data.discountType = discountType;
     if (discountValue !== undefined) data.discountValue = parseFloat(discountValue);
-    if (appliesTo) data.appliesTo = appliesTo;
+    if (appliesTo !== undefined || req.body.renewalCount !== undefined) {
+      const scope = parseScope(appliesTo, req.body.renewalCount);
+      if (scope.error) return res.status(400).json({ error: scope.error });
+      data.appliesTo = scope.appliesTo;
+      data.renewalCount = scope.renewalCount;
+    }
+    if (discountType && !['percentage', 'fixed'].includes(discountType)) {
+      return res.status(400).json({ error: 'discountType must be "percentage" or "fixed".' });
+    }
     if (maxUses !== undefined) data.maxUses = maxUses ? parseInt(maxUses) : null;
     if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
     if (productId !== undefined) data.productId = productId ? parseInt(productId) : null;

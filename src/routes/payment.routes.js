@@ -33,6 +33,13 @@ const perIpLimiter = rateLimit({
 });
 const paymentLimiter = [perIpLimiter, perCustomerLimiter];
 
+// Renewal pricing for a new subscription: full plan price, and the coupon's renewal discount
+function renewalFields(fullPriceCents, discountCents, coupon) {
+  const terms = couponService.renewalTerms(coupon);
+  if (!terms.discounted || !discountCents) return { fullPriceCents };
+  return { fullPriceCents, renewalDiscountCents: discountCents, discountedRenewalsLeft: terms.count };
+}
+
 // ── POST /api/payment/create ──────────────────────────────────────────────────
 router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) => {
   try {
@@ -191,6 +198,7 @@ router.post('/create', paymentLimiter, validatePaymentInput, async (req, res) =>
         couponCode: appliedCoupon?.code || null,
         discountCents: discountCents || null,
         isOneTime,
+        ...(isOneTime ? {} : renewalFields(amountCents, discountCents, appliedCoupon)),
       });
     } catch (dbErr) {
       log('ERROR', 'payment', 'DB write failed after Paymob intention — RECONCILE MANUALLY', {
